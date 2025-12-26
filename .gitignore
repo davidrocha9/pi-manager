@@ -1,0 +1,29 @@
+# Binaries
+bin/
+server/pi-manager
+server/cmd/pi-manager/pi-manager
+
+# Node
+node_modules/
+dist/
+client/dist/
+.env
+
+# Logs
+*.log
+server/state-history.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+*.exe
+*.test
+*.prof
+
+# Project specific
+server/state.json
+server/state-history.json
+server/internal/api/web/assets/

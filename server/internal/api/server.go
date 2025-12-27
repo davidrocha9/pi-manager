@@ -697,61 +697,172 @@ func (lw *logWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// findPortForPID attempts to find the TCP listening port for a process tree using pgrep and lsof
+// findPortForPID attempts to find the TCP listening port for a process tree
+// Uses /proc filesystem directly for better compatibility with Raspberry Pi
 func findPortForPID(pid int) string {
-	// 1. Get List of PIDs in the process group
-	var pids []string
-	pids = append(pids, fmt.Sprintf("%d", pid)) // always check the root pid
+	// 1. Collect all PIDs in the process tree (parent + children)
+	pids := collectProcessTree(pid)
 
-	pgrep := exec.Command("pgrep", "-g", fmt.Sprintf("%d", pid))
-	if out, err := pgrep.Output(); err == nil {
-		lines := strings.Split(string(out), "\n")
-		for _, line := range lines {
-			s := strings.TrimSpace(line)
-			if s != "" {
-				// avoid duplicate if pgrep includes the root pid
-				found := false
-				for _, existing := range pids {
-					if existing == s {
-						found = true
-						break
-					}
+	// 2. Build a map of inode -> port from /proc/net/tcp
+	inodeToPorts := parseNetTCP()
+	if len(inodeToPorts) == 0 {
+		return ""
+	}
+
+	// 3. For each PID, check its file descriptors for socket inodes
+	for _, p := range pids {
+		fdPath := fmt.Sprintf("/proc/%d/fd", p)
+		entries, err := os.ReadDir(fdPath)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			link, err := os.Readlink(filepath.Join(fdPath, entry.Name()))
+			if err != nil {
+				continue
+			}
+
+			// Socket links look like: socket:[12345]
+			if strings.HasPrefix(link, "socket:[") && strings.HasSuffix(link, "]") {
+				inodeStr := link[8 : len(link)-1]
+				inode, err := strconv.ParseUint(inodeStr, 10, 64)
+				if err != nil {
+					continue
 				}
-				if !found {
-					pids = append(pids, s)
+
+				if port, ok := inodeToPorts[inode]; ok {
+					return port
 				}
 			}
 		}
 	}
 
-	// 2. Check ports for all PIDs
-	// lsof -Pan -p PID,PID,PID -i -sTCP:LISTEN
-	cmd := exec.Command("lsof", "-Pan", "-p", strings.Join(pids, ","), "-i", "-sTCP:LISTEN")
-	out, _ := cmd.Output() // ignore error as it returns non-zero if no open files
-
-	// Output format example:
-	// node 12345 user 20u IPv4 0t0 TCP *:3000 (LISTEN)
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "(LISTEN)") {
-			// Find the part like *:3000 or 127.0.0.1:3000
-			parts := strings.Fields(line)
-			for _, part := range parts {
-				if strings.Contains(part, ":") {
-					// take the last part after last colon
-					colonIdx := strings.LastIndex(part, ":")
-					if colonIdx != -1 && colonIdx < len(part)-1 {
-						port := part[colonIdx+1:]
-						// Validate it's a number (simple check)
-						if len(port) > 0 && port[0] >= '0' && port[0] <= '9' {
-							return port
-						}
-					}
-				}
-			}
-		}
-	}
 	return ""
+}
+
+// collectProcessTree returns all PIDs in the process tree starting from the given PID
+func collectProcessTree(rootPid int) []int {
+	pids := []int{rootPid}
+	seen := map[int]bool{rootPid: true}
+
+	// Recursively find children by scanning /proc
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return pids
+	}
+
+	// Build parent -> children map
+	childrenMap := make(map[int][]int)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+
+		// Read parent PID from /proc/[pid]/stat
+		statPath := fmt.Sprintf("/proc/%d/stat", pid)
+		data, err := os.ReadFile(statPath)
+		if err != nil {
+			continue
+		}
+
+		// stat format: pid (comm) state ppid ...
+		// Find the closing paren to skip comm which may contain spaces
+		statStr := string(data)
+		closeParenIdx := strings.LastIndex(statStr, ")")
+		if closeParenIdx == -1 || closeParenIdx+2 >= len(statStr) {
+			continue
+		}
+		fields := strings.Fields(statStr[closeParenIdx+2:])
+		if len(fields) < 2 {
+			continue
+		}
+		ppid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+
+		childrenMap[ppid] = append(childrenMap[ppid], pid)
+	}
+
+	// BFS to collect all descendants
+	queue := []int{rootPid}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		for _, child := range childrenMap[current] {
+			if !seen[child] {
+				seen[child] = true
+				pids = append(pids, child)
+				queue = append(queue, child)
+			}
+		}
+	}
+
+	return pids
+}
+
+// parseNetTCP parses /proc/net/tcp and /proc/net/tcp6 to build a map of inode -> port
+// Only includes LISTEN sockets (state = 0A)
+func parseNetTCP() map[uint64]string {
+	result := make(map[uint64]string)
+
+	for _, path := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
+		file, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(file)
+		// Skip header line
+		if scanner.Scan() {
+			// header skipped
+		}
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			fields := strings.Fields(line)
+			if len(fields) < 10 {
+				continue
+			}
+
+			// fields[1] = local_address (IP:Port in hex)
+			// fields[3] = state (0A = LISTEN)
+			// fields[9] = inode
+
+			state := fields[3]
+			if state != "0A" { // 0A = TCP_LISTEN
+				continue
+			}
+
+			localAddr := fields[1]
+			colonIdx := strings.LastIndex(localAddr, ":")
+			if colonIdx == -1 {
+				continue
+			}
+
+			portHex := localAddr[colonIdx+1:]
+			port, err := strconv.ParseUint(portHex, 16, 16)
+			if err != nil {
+				continue
+			}
+
+			inode, err := strconv.ParseUint(fields[9], 10, 64)
+			if err != nil {
+				continue
+			}
+
+			result[inode] = fmt.Sprintf("%d", port)
+		}
+		file.Close()
+	}
+
+	return result
 }
 
 func getTailscaleDNSName() string {

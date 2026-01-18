@@ -65,6 +65,7 @@
       p.status?.toLowerCase().includes(q)
     );
   });
+
   const handlePathSelect = (e) => {
     projectPath = e.detail;
     showBrowserModal = false;
@@ -137,6 +138,7 @@
     projects = projects.map((p) =>
       p.id === id ? { ...p, status: "IDLE" } : p,
     );
+
     try {
       await stopProject(id);
       await refresh();
@@ -275,7 +277,7 @@
                         <th class="text-left px-4 py-3">Description</th>
                         <th class="text-left px-4 py-3">Directory</th>
                         <th class="text-center px-4 py-3">Status</th>
-                        <th class="text-left px-4 py-3">Port</th>
+                        <th class="text-left px-4 py-3">Ports</th>
                         <th class="text-right px-4 py-3"></th>
                       </tr>
                     </thead>
@@ -367,7 +369,7 @@
                         <th class="text-left px-4 py-3">Description</th>
                         <th class="text-left px-4 py-3">Directory</th>
                         <th class="text-center px-4 py-3">Status</th>
-                        <th class="text-left px-4 py-3">Port</th>
+                        <th class="text-left px-4 py-3">Ports</th>
                         <th class="text-right px-4 py-3"></th>
                       </tr>
                     </thead>
@@ -440,15 +442,19 @@
                             </div>
                           </td>
                           <td class="px-4 py-3 text-slate-700 font-medium">
-                            {#if project.port}
-                              <a
-                                href="http://{health?.tailscale_name ||
-                                  'localhost'}:{project.port}"
-                                target="_blank"
-                                class="text-indigo-600 hover:text-indigo-800 hover:underline"
-                              >
-                                {project.port}
-                              </a>
+                            {#if project.ports && project.ports.length > 0}
+                              <div class="flex flex-wrap gap-1">
+                                {#each project.ports as port}
+                                  <a
+                                    href="http://{health?.tailscale_name ||
+                                      'localhost'}:{port}"
+                                    target="_blank"
+                                    class="text-indigo-600 hover:text-indigo-800 hover:underline px-1.5 py-0.5 bg-indigo-50 rounded"
+                                  >
+                                    {port}
+                                  </a>
+                                {/each}
+                              </div>
                             {:else}
                               -
                             {/if}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -319,28 +320,30 @@ func (h *Handler) handleProjectAction(w http.ResponseWriter, r *http.Request) {
 						break
 					}
 
-					// Attempt auto-discovery of port if missing
-					if proj.Port == "" {
-						go func(pid int) {
-							// Try multiple times over a few seconds
-							for i := 0; i < 30; i++ {
-								time.Sleep(1 * time.Second)
-								port := findPortForPID(pid)
-								if port != "" {
-									projLock.Lock()
-									// Only update if still running and not set
-									if proj.Status == "BOOTING" || proj.Status == "ACTIVE" {
-										if proj.Port == "" {
-											proj.Port = port
-											h.store.AddProject(proj)
-										}
-									}
-									projLock.Unlock()
-									return
+					// Attempt auto-discovery of ports
+					go func(pid int) {
+						// Wait a moment for process to establish PGID
+						time.Sleep(500 * time.Millisecond)
+						pgid, err := syscall.Getpgid(pid)
+						if err != nil {
+							pgid = pid // fallback
+						}
+
+						// Try multiple times over a few seconds
+						for i := 0; i < 30; i++ {
+							time.Sleep(1 * time.Second)
+							ports := findPortsForPGID(pgid)
+							if len(ports) > 0 {
+								projLock.Lock()
+								// Update if ports list changed, regardless of status (active services might persist after boot script)
+								if !slicesEqual(proj.Ports, ports) {
+									proj.Ports = ports
+									h.store.AddProject(proj)
 								}
+								projLock.Unlock()
 							}
-						}(cmd.Process.Pid)
-					}
+						}
+					}(cmd.Process.Pid)
 
 					// Helper to kill the entire process group if context is cancelled
 					go func() {
@@ -430,10 +433,10 @@ func (h *Handler) killProject(id string) {
 	}
 
 	if p, ok := h.store.GetProject(id); ok {
-		// If project has a port defined, try to kill whatever is using it
-		if p.Port != "" {
+		// If project has ports defined, try to kill whatever is using them
+		for _, port := range p.Ports {
 			// We use lsof -ti:PORT to find PIDs and kill them
-			exec.Command("sh", "-c", fmt.Sprintf("lsof -ti:%s | xargs kill -9", p.Port)).Run()
+			exec.Command("sh", "-c", fmt.Sprintf("lsof -ti:%s | xargs kill -9", port)).Run()
 		}
 	}
 }
@@ -697,18 +700,19 @@ func (lw *logWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// findPortForPID attempts to find the TCP listening port for a process tree
+// findPortsForPGID attempts to find all TCP listening ports for a process group
 // Uses /proc filesystem directly for better compatibility with Raspberry Pi
-func findPortForPID(pid int) string {
-	// 1. Collect all PIDs in the process tree (parent + children)
-	pids := collectProcessTree(pid)
+func findPortsForPGID(pgid int) []string {
+	// 1. Collect all PIDs in the process group
+	pids := collectProcessGroup(pgid)
 
 	// 2. Build a map of inode -> port from /proc/net/tcp
 	inodeToPorts := parseNetTCP()
 	if len(inodeToPorts) == 0 {
-		return ""
+		return nil
 	}
 
+	foundPorts := make(map[string]bool)
 	// 3. For each PID, check its file descriptors for socket inodes
 	for _, p := range pids {
 		fdPath := fmt.Sprintf("/proc/%d/fd", p)
@@ -732,28 +736,30 @@ func findPortForPID(pid int) string {
 				}
 
 				if port, ok := inodeToPorts[inode]; ok {
-					return port
+					foundPorts[port] = true
 				}
 			}
 		}
 	}
 
-	return ""
+	out := make([]string, 0, len(foundPorts))
+	for p := range foundPorts {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
-// collectProcessTree returns all PIDs in the process tree starting from the given PID
-func collectProcessTree(rootPid int) []int {
-	pids := []int{rootPid}
-	seen := map[int]bool{rootPid: true}
+// collectProcessGroup returns all PIDs that belong to the given PGID or are descendants.
+func collectProcessGroup(targetPgid int) []int {
+	pids := []int{}
+	seen := map[int]bool{}
 
-	// Recursively find children by scanning /proc
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return pids
 	}
 
-	// Build parent -> children map
-	childrenMap := make(map[int][]int)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -763,43 +769,31 @@ func collectProcessTree(rootPid int) []int {
 			continue
 		}
 
-		// Read parent PID from /proc/[pid]/stat
 		statPath := fmt.Sprintf("/proc/%d/stat", pid)
 		data, err := os.ReadFile(statPath)
 		if err != nil {
 			continue
 		}
 
-		// stat format: pid (comm) state ppid ...
-		// Find the closing paren to skip comm which may contain spaces
 		statStr := string(data)
 		closeParenIdx := strings.LastIndex(statStr, ")")
-		if closeParenIdx == -1 || closeParenIdx+2 >= len(statStr) {
+		if closeParenIdx == -1 {
 			continue
 		}
 		fields := strings.Fields(statStr[closeParenIdx+2:])
-		if len(fields) < 2 {
-			continue
-		}
-		ppid, err := strconv.Atoi(fields[1])
-		if err != nil {
+		if len(fields) < 3 {
 			continue
 		}
 
-		childrenMap[ppid] = append(childrenMap[ppid], pid)
-	}
+		// fields[0] = state
+		// fields[1] = ppid
+		// fields[2] = pgrp (PGID)
+		pgrp, _ := strconv.Atoi(fields[2])
 
-	// BFS to collect all descendants
-	queue := []int{rootPid}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		for _, child := range childrenMap[current] {
-			if !seen[child] {
-				seen[child] = true
-				pids = append(pids, child)
-				queue = append(queue, child)
+		if pgrp == targetPgid {
+			if !seen[pid] {
+				seen[pid] = true
+				pids = append(pids, pid)
 			}
 		}
 	}
@@ -882,4 +876,16 @@ func getTailscaleDNSName() string {
 	}
 
 	return strings.TrimSuffix(status.Self.DNSName, ".")
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

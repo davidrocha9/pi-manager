@@ -9,11 +9,17 @@
 
   let id = "";
   let description = "";
-  let port = "";
+  let portsStr = "";
 
   const handleSubmit = () => {
     if (!id) return;
-    dispatch("next", { id, description, path, port });
+    const ports = portsStr
+      ? portsStr
+          .split(",")
+          .map((p) => p.trim())
+          .filter((p) => p !== "")
+      : [];
+    dispatch("next", { id, description, path, ports });
     // Note: We don't reset yet as we might need to go back or reference this
   };
 
@@ -21,7 +27,7 @@
     id = "";
     description = "";
     path = "";
-    port = "";
+    portsStr = "";
   };
 </script>
 
@@ -68,8 +74,8 @@
         </div>
       </div>
       <div class="space-y-1.5">
-        <label for="port" class="text-sm font-bold text-slate-700"
-          >Port (Optional)</label
+        <label for="ports" class="text-sm font-bold text-slate-700"
+          >Ports (Optional, comma-separated)</label
         >
         <div class="relative">
           <div
@@ -78,10 +84,10 @@
             <Terminal size={14} />
           </div>
           <input
-            id="port"
+            id="ports"
             class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-            placeholder="e.g. 3000"
-            bind:value={port}
+            placeholder="e.g. 3000, 3001"
+            bind:value={portsStr}
           />
         </div>
       </div>

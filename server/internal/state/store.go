@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,11 @@ func (s *Store) Load() error {
 		if err := dec.Decode(&snap); err == nil {
 			s.projects = map[string]Project{}
 			for _, p := range snap.Projects {
+				// Migration: if Ports is empty but legacy Port is set, migrate it
+				if len(p.Ports) == 0 && p.Port != "" {
+					p.Ports = []string{p.Port}
+					p.Port = ""
+				}
 				s.projects[p.ID] = p
 			}
 		}
@@ -94,6 +100,11 @@ func (s *Store) Snapshot() error {
 		projects = append(projects, p)
 	}
 	s.mu.RUnlock()
+
+	// Sort projects by ID to maintain consistent order
+	sort.Slice(projects, func(i, j int) bool {
+		return projects[i].ID < projects[j].ID
+	})
 
 	enc := json.NewEncoder(pf)
 	enc.SetIndent("", "  ")
@@ -148,7 +159,8 @@ type Project struct {
 	LastLog     string         `json:"last_log"`       // output of the last execution
 	CurrentStep string         `json:"current_step"`   // name of the currently running step
 	Progress    int            `json:"progress"`       // progress percentage 0-100
-	Port        string         `json:"port"`           // optional port number
+	Ports       []string       `json:"ports"`          // optional port numbers
+	Port        string         `json:"port,omitempty"` // legacy field for migration
 }
 
 // projects map stores configured projects
@@ -171,7 +183,7 @@ func (s *Store) RemoveProject(id string) {
 	delete(s.projects, id)
 }
 
-// GetProjects returns all projects.
+// GetProjects returns all projects sorted by ID.
 func (s *Store) GetProjects() []Project {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -179,6 +191,12 @@ func (s *Store) GetProjects() []Project {
 	for _, p := range s.projects {
 		out = append(out, p)
 	}
+
+	// Sort projects by ID to maintain consistent order
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ID < out[j].ID
+	})
+
 	return out
 }
 

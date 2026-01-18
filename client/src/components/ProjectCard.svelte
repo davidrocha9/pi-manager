@@ -113,13 +113,25 @@
           class="text-slate-400 flex items-center gap-1.5 pt-0.5 font-bold uppercase tracking-tighter"
         >
           <ExternalLink size={12} />
-          Port
+          Ports
         </span>
-        <span
-          class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded font-bold"
-        >
-          {project.port || "None"}
-        </span>
+        <div class="flex flex-wrap gap-1 justify-end max-w-[150px]">
+          {#if project.ports && project.ports.length > 0}
+            {#each project.ports as port}
+              <span
+                class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded font-bold"
+              >
+                {port}
+              </span>
+            {/each}
+          {:else}
+            <span
+              class="px-2 py-0.5 bg-slate-50 text-slate-400 rounded font-bold"
+            >
+              None
+            </span>
+          {/if}
+        </div>
       </div>
 
       <div class="flex items-center gap-2 pt-4 border-t border-slate-100">

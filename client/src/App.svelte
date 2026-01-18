@@ -246,6 +246,24 @@
             <p class="text-slate-500 mt-1 font-medium">
               Manage and monitor your Pi projects and system health.
             </p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <div
+                class="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-emerald-100 shadow-sm"
+              >
+                <span
+                  class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"
+                ></span>
+                Server: 2001
+              </div>
+              {#if window.location.port !== "2001"}
+                <div
+                  class="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-indigo-100 shadow-sm"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                  Client: {window.location.port || "80"}
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
 

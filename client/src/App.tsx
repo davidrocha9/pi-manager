@@ -4,6 +4,7 @@ import { useState } from "react"
 import type { TabId } from "@/components/layout/app-sidebar"
 import { AppShell } from "@/components/layout/app-shell"
 import { PageHeader } from "@/components/layout/page-header"
+import { ProjectsView } from "@/components/projects/projects-view"
 import { useHealth } from "@/hooks/use-health"
 import { createQueryClient } from "@/lib/query-client"
 
@@ -31,7 +32,15 @@ function AppContent() {
         description="Manage and monitor your Pi projects and system health."
         healthError={healthError}
       />
-      <div className="mt-6" />
+      {activeTab === "projects" ? (
+        <div className="mt-6">
+          <ProjectsView
+            searchQuery={searchQuery}
+            onClearSearch={() => setSearchQuery("")}
+            onCreateProject={() => undefined}
+          />
+        </div>
+      ) : null}
     </AppShell>
   )
 }

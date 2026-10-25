@@ -241,7 +241,7 @@ export function FileBrowser({ initialPath = "", onSelect, onCancel }: FileBrowse
           </div>
         ) : error ? (
           <div className="flex min-h-40 flex-col items-center justify-center gap-2 p-6 text-center">
-            <p className="text-sm font-medium text-danger-foreground">Could not list this directory</p>
+            <p className="text-sm font-medium text-destructive">Could not list this directory</p>
             <p className="max-w-sm text-xs text-muted-foreground">{error}</p>
             <Button
               type="button"

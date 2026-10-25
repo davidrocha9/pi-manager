@@ -15,8 +15,8 @@ export function PageHeader({ title, description, healthError }: PageHeaderProps)
         <h1 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">{title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-success-surface px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-success-foreground uppercase">
-            <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-primary/10 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-primary uppercase">
+            <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
             Server: 2001
           </span>
           {clientPort !== "2001" ? (
@@ -27,7 +27,7 @@ export function PageHeader({ title, description, healthError }: PageHeaderProps)
           ) : null}
           {healthError ? (
             <span
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-danger-surface px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-danger-foreground uppercase"
+              className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-[10px] font-semibold tracking-[0.08em] text-destructive uppercase"
               title={healthError}
               role="status"
             >

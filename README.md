@@ -8,20 +8,20 @@
 - **Process Management**: Start, stop, and monitor custom applications ("Projects").
 - **Pipeline Execution**: Visual tracking of project states (`IDLE`, `BOOTING`, `ACTIVE`, `FAILED`) with real-time logs.
 - **Systemd Integration**: Designed to work seamlessly with systemd for process supervision.
-- **Modern UI**: Built with Svelte and TailwindCSS for a responsive and beautiful experience.
+- **Modern UI**: Built with React, TypeScript, TailwindCSS, and shadcn/ui for a responsive and beautiful experience.
 
 ## 📂 Project Structure
 
 - `server/`: Go backend. Handles system metrics, process management, and serves the API & static assets.
-- `client/`: Svelte/Vite frontend. Provides the dashboard and management UI.
-- `boot.sh`: Production build script.
+- `client/`: React/Vite frontend. Provides the dashboard and management UI.
+- `start.sh`: Production build script.
 - `dev.sh`: Development startup script (hot-reload).
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Go 1.21+
-- Node.js & npm
+- [bun](https://bun.sh/) 1.2.x
 
 ### Development Mode
 To start both the Go backend and the Vite development server (with proxying and hot-reload):
@@ -29,18 +29,20 @@ To start both the Go backend and the Vite development server (with proxying and 
 ```bash
 ./dev.sh
 ```
-Access the UI at `http://localhost:5173`.
+Access the UI at `http://localhost:2000`.
 
 ### Production Build
 To build the client assets and the server binary:
 
 ```bash
-./boot.sh
+./start.sh
 ```
 This will:
-1. Build the Svelte app.
+1. Build the React client.
 2. Embed the assets into the Go binary.
-3. Build the `pi-manager` binary in `server/`.
+3. Build the `pi-manager` binary in `server/` and start it on port 2001.
+
+> Note: client assets are embedded into the Go binary at build time, so rebuilding the client always requires rebuilding the Go binary before the new UI is served.
 
 ## 📦 Installation (Example)
 

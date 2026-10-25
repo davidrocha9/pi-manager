@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Get the script's directory
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -7,7 +8,7 @@ cd "$DIR"
 echo "Starting pi-manager production environment..."
 
 # 1. Build Client
-echo "Building Client (Svelte)..."
+echo "Building Client (React)..."
 (
   cd client
   # Ensure dependencies are installed

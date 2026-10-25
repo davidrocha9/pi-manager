@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -65,12 +65,18 @@ afterEach(() => {
 })
 
 describe("PiHealthView", () => {
-  it("renders host identity cards", async () => {
+  it("renders the host strip with identity, uptime, and per-window load", async () => {
     renderView(makeHealth())
 
     expect(await screen.findByText("pi-box")).toBeInTheDocument()
+    expect(screen.getByText("Live system metrics")).toBeInTheDocument()
     expect(screen.getByText("3 days")).toBeInTheDocument()
-    expect(screen.getByText("0.50, 0.40, 0.30")).toBeInTheDocument()
+    expect(screen.getByText("0.50")).toBeInTheDocument()
+    expect(screen.getByText("0.40")).toBeInTheDocument()
+    expect(screen.getByText("0.30")).toBeInTheDocument()
+    expect(screen.getByText("1m")).toBeInTheDocument()
+    expect(screen.getByText("5m")).toBeInTheDocument()
+    expect(screen.getByText("15m")).toBeInTheDocument()
   })
 
   it("switching metric changes the chart binding without a refetch", async () => {
@@ -97,6 +103,17 @@ describe("PiHealthView", () => {
 
     const chart = await screen.findByRole("img", { name: /Disk Usage chart/ })
     expect(chart).toHaveAccessibleName(expect.stringContaining("Disk Usage"))
+  })
+
+  it("shows a visible min/latest/max summary for the active metric", async () => {
+    renderView(makeHealth())
+
+    const summary = await screen.findByTestId("chart-summary")
+    for (const label of ["Min", "Latest", "Max"]) {
+      expect(within(summary).getByText(label)).toBeInTheDocument()
+    }
+    // Latest and Max coincide on rising fixture data.
+    expect(within(summary).getAllByText("34.0%")).toHaveLength(2)
   })
 
   it("renders the empty state instead of an axis with no series", async () => {

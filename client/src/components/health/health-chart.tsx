@@ -105,7 +105,7 @@ export function HealthChart({ history, metric, timeframe, now: nowProp }: Health
         icon={Activity}
         title="No data for this timeframe"
         description={`No ${config.label.toLowerCase()} readings fall inside the selected window.`}
-        className="h-[220px] border-0 bg-transparent sm:min-h-[280px]"
+        className="h-[240px] border-0 bg-transparent sm:h-[320px]"
       />
     )
   }
@@ -120,7 +120,7 @@ export function HealthChart({ history, metric, timeframe, now: nowProp }: Health
         config={chartConfig}
         role="img"
         aria-label={ariaLabel}
-        className="h-[220px] w-full sm:min-h-[280px]"
+        className="h-[240px] w-full sm:h-[320px]"
       >
         <AreaChart data={data} margin={CHART_MARGIN}>
           <defs>
@@ -167,6 +167,26 @@ export function HealthChart({ history, metric, timeframe, now: nowProp }: Health
           />
         </AreaChart>
       </ChartContainer>
+      <div
+        className="flex items-center gap-6 px-1 pt-2 text-xs"
+        data-testid="chart-summary"
+      >
+        {[
+          { label: "Min", value: min },
+          { label: "Latest", value: latest },
+          { label: "Max", value: max },
+        ].map(({ label, value }) => (
+          <span key={label} className="flex items-baseline gap-1.5">
+            <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+              {label}
+            </span>
+            <span className="font-semibold tabular-nums">
+              {value.toFixed(1)}
+              {config.unit}
+            </span>
+          </span>
+        ))}
+      </div>
       <p className="sr-only">
         {config.label}: latest {latest.toFixed(1)}
         {config.unit} at {latestTime.toLocaleString()}, minimum {min.toFixed(1)}

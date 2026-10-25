@@ -1,5 +1,4 @@
 import * as React from "react"
-import { Clock, Gauge, Server } from "lucide-react"
 
 import { StaleBanner } from "@/components/stale-banner"
 import { Button } from "@/components/ui/button"
@@ -22,42 +21,58 @@ const EMPTY_HISTORY: PiHistoryPoint[] = []
 import { HealthChart } from "./health-chart"
 import { MetricCards } from "./metric-cards"
 
-function IdentityCards({ health }: { health: PiHealth }) {
-  const cards = [
-    {
-      icon: Server,
-      label: "Hostname",
-      value: health.hostname || "N/A",
-    },
-    {
-      icon: Clock,
-      label: "Uptime",
-      value: health.uptime || "N/A",
-    },
-    {
-      icon: Gauge,
-      label: "Load Average",
-      value: `${health.load_avg_1?.toFixed(2) ?? 0}, ${health.load_avg_5?.toFixed(2) ?? 0}, ${health.load_avg_15?.toFixed(2) ?? 0}`,
-    },
+function HostStrip({ health }: { health: PiHealth }) {
+  const loads = [
+    { label: "1m", value: health.load_avg_1 },
+    { label: "5m", value: health.load_avg_5 },
+    { label: "15m", value: health.load_avg_15 },
   ]
 
   return (
-    <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-3">
-      {cards.map(({ icon: Icon, label, value }) => (
-        <Card key={label}>
-          <CardContent className="flex items-center gap-3 p-4">
-            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-              <Icon className="size-4" aria-hidden="true" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                {label}
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-border bg-card px-4 py-3.5 sm:px-5">
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="relative flex size-2.5 shrink-0" aria-hidden="true">
+          <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-success opacity-60" />
+          <span className="relative inline-flex size-2.5 rounded-full bg-success" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[15px] font-semibold tracking-tight">
+            {health.hostname || "N/A"}
+          </span>
+          <span className="block text-[11px] text-muted-foreground">
+            Live system metrics
+          </span>
+        </span>
+      </span>
+
+      <span className="hidden h-9 w-px bg-border sm:block" aria-hidden="true" />
+
+      <span className="min-w-0">
+        <span className="block text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+          Uptime
+        </span>
+        <span className="block truncate text-sm font-semibold tabular-nums">
+          {health.uptime || "N/A"}
+        </span>
+      </span>
+
+      <span className="hidden h-9 w-px bg-border sm:block" aria-hidden="true" />
+
+      <span>
+        <span className="block text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+          Load average
+        </span>
+        <span className="flex items-baseline gap-3">
+          {loads.map(({ label, value }) => (
+            <span key={label} className="flex items-baseline gap-1">
+              <span className="text-sm font-semibold tabular-nums">
+                {value?.toFixed(2) ?? "0.00"}
               </span>
-              <span className="block truncate text-lg font-bold tabular-nums">{value}</span>
+              <span className="text-[10px] text-muted-foreground">{label}</span>
             </span>
-          </CardContent>
-        </Card>
-      ))}
+          ))}
+        </span>
+      </span>
     </div>
   )
 }
@@ -65,26 +80,19 @@ function IdentityCards({ health }: { health: PiHealth }) {
 function LoadingSkeleton() {
   return (
     <div className="flex flex-col gap-4" aria-label="Loading Pi health">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {["hostname", "uptime", "load"].map((key) => (
-          <div key={key} className="rounded-xl border border-border p-4">
-            <Skeleton className="mb-2 h-4 w-20" />
-            <Skeleton className="h-6 w-24" />
+      <div className="rounded-xl border border-border p-4">
+        <Skeleton className="h-6 w-48" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {METRIC_IDS.map((key) => (
+          <div key={key} className="min-h-[104px] rounded-xl border border-border p-3.5">
+            <Skeleton className="mb-2 h-4 w-16" />
+            <Skeleton className="h-7 w-24" />
           </div>
         ))}
       </div>
-      <div className="flex flex-col gap-4 lg:flex-row">
-        <div className="grid grid-cols-2 gap-3 lg:flex lg:w-56 lg:flex-col">
-          {METRIC_IDS.map((key) => (
-            <div key={key} className="min-h-[110px] flex-1 rounded-xl border border-border p-4">
-              <Skeleton className="mb-2 h-4 w-16" />
-              <Skeleton className="h-6 w-20" />
-            </div>
-          ))}
-        </div>
-        <div className="flex-1 rounded-xl border border-border p-4">
-          <Skeleton className="h-full min-h-40" />
-        </div>
+      <div className="rounded-xl border border-border p-4">
+        <Skeleton className="h-full min-h-60" />
       </div>
     </div>
   )
@@ -130,43 +138,38 @@ export function PiHealthView() {
           retrying={piHealth.isFetching}
         />
       ) : null}
-      <IdentityCards health={health} />
+      <HostStrip health={health} />
+      <MetricCards health={health} selected={metric} onSelect={setMetric} />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        <MetricCards health={health} selected={metric} onSelect={setMetric} />
-
-        <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:p-6">
-            <div className="flex shrink-0 flex-col justify-between gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-3">
-                <span
-                  className="size-4 shrink-0 rounded-full"
-                  style={{ backgroundColor: activeConfig.color }}
-                  aria-hidden="true"
-                />
-                <h4 className="text-lg font-bold">{activeConfig.label}</h4>
-              </div>
-
-              <Tabs
-                value={timeframe}
-                onValueChange={(value) => setTimeframe(value as TimeframeId)}
-              >
-                <TabsList className="max-w-full overflow-x-auto">
-                  {TIMEFRAME_IDS.map((id) => (
-                    <TabsTrigger key={id} value={id} className="min-h-11 sm:min-h-0">
-                      {TIMEFRAMES[id].shortLabel}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+      <Card className="flex min-w-0 flex-col overflow-hidden">
+        <CardContent className="flex flex-col gap-2 p-4 sm:p-6">
+          <div className="flex shrink-0 flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2.5">
+              <span
+                className="size-3.5 shrink-0 rounded-[4px]"
+                style={{ backgroundColor: activeConfig.color }}
+                aria-hidden="true"
+              />
+              <h4 className="text-[15px] font-semibold tracking-tight">{activeConfig.label}</h4>
             </div>
 
-            <div className="min-h-0 flex-1 rounded-lg border border-border/50 bg-muted/30 p-2 sm:p-4">
-              <HealthChart history={health.history ?? EMPTY_HISTORY} metric={metric} timeframe={timeframe} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Tabs
+              value={timeframe}
+              onValueChange={(value) => setTimeframe(value as TimeframeId)}
+            >
+              <TabsList className="max-w-full overflow-x-auto">
+                {TIMEFRAME_IDS.map((id) => (
+                  <TabsTrigger key={id} value={id} className="min-h-11 sm:min-h-0">
+                    {TIMEFRAMES[id].shortLabel}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <HealthChart history={health.history ?? EMPTY_HISTORY} metric={metric} timeframe={timeframe} />
+        </CardContent>
+      </Card>
     </div>
   )
 }

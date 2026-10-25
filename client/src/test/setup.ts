@@ -63,4 +63,7 @@ if (!Element.prototype.scrollTo) {
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  document.documentElement.classList.remove("dark")
+  delete document.documentElement.dataset.reducedMotion
+  document.documentElement.style.colorScheme = ""
 })

@@ -18,7 +18,6 @@ export type Project = {
   current_step: string
   progress: number
   ports: string[]
-  port?: string
 }
 
 export type CreateProjectInput = {

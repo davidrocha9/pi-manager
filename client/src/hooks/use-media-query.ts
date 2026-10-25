@@ -22,8 +22,3 @@ export function useMediaQuery(query: string): boolean {
 export function useIsPhone(): boolean {
   return useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
 }
-
-/** Desktop rail vs mobile navigation drawer. */
-export function useIsDesktop(): boolean {
-  return useMediaQuery(`(min-width: ${NAV_BREAKPOINT}px)`)
-}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -153,6 +153,83 @@ describe("FileBrowser", () => {
     await waitFor(() => {
       expect(getFiles).toHaveBeenLastCalledWith("zeta")
     })
+  })
+
+  it("retries the failed directory instead of the last successful one", async () => {
+    vi.mocked(getFiles).mockImplementation(async (path = "") => {
+      if (path === "") return rootListing
+      if (path === "app") throw new Error("permission denied")
+      return listing(`/home/pi/${path}`, [])
+    })
+    const user = userEvent.setup()
+    render(<FileBrowser onSelect={vi.fn()} />)
+
+    await screen.findByText("App")
+    await user.click(screen.getByRole("option", { name: "App" }))
+
+    expect(await screen.findByText("Could not list this directory")).toBeInTheDocument()
+
+    vi.mocked(getFiles).mockImplementation(async (path = "") =>
+      path === "" ? rootListing : listing("/home/pi/app", []),
+    )
+    await user.click(screen.getByRole("button", { name: "Retry" }))
+
+    await waitFor(() => {
+      expect(screen.getByTitle("/home/pi/app")).toBeInTheDocument()
+    })
+    const calls = vi.mocked(getFiles).mock.calls.map((call) => call[0] ?? "")
+    expect(calls[calls.length - 1]).toBe("app")
+    expect(screen.queryByText("Could not list this directory")).not.toBeInTheDocument()
+  })
+
+  it("moves focus to the filter after navigating up to the base directory", async () => {
+    vi.mocked(getFiles).mockImplementation(async (path = "") => {
+      if (path === "") return rootListing
+      return listing("/home/pi/App", [])
+    })
+    const user = userEvent.setup()
+    render(<FileBrowser initialPath="/home/pi/App" onSelect={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTitle("/home/pi/App")).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole("button", { name: "Go up one directory" }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Filter directories")).toHaveFocus()
+    })
+    expect(screen.getByRole("button", { name: "Go up one directory" })).toBeDisabled()
+  })
+
+  it("ignores a stale response when a newer navigation started", async () => {
+    const staleListing = listing("/home/pi", [entry("StaleDir", true, "stale")])
+    let resolveFirst!: (value: FsListing) => void
+    let resolveSecond!: (value: FsListing) => void
+    vi.mocked(getFiles).mockImplementationOnce(
+      () => new Promise<FsListing>((resolve) => { resolveFirst = resolve }),
+    )
+    vi.mocked(getFiles).mockImplementationOnce(
+      () => new Promise<FsListing>((resolve) => { resolveSecond = resolve }),
+    )
+    const user = userEvent.setup()
+    render(<FileBrowser onSelect={vi.fn()} />)
+
+    // A second navigation starts while the first request is still in flight.
+    await user.click(screen.getByRole("button", { name: "Go to base directory" }))
+
+    await act(async () => {
+      resolveFirst(staleListing)
+    })
+
+    // The stale first response paints nothing and does not clear loading.
+    expect(screen.getByText("Loading…")).toBeInTheDocument()
+    expect(screen.queryByText("StaleDir")).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveSecond(rootListing)
+    })
+    await screen.findByText("App")
   })
 })
 

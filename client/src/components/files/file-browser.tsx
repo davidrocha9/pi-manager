@@ -47,22 +47,32 @@ export function FileBrowser({ initialPath = "", onSelect, onCancel }: FileBrowse
   const filterRef = React.useRef<HTMLInputElement>(null)
   const upRef = React.useRef<HTMLButtonElement>(null)
   const listRef = React.useRef<HTMLDivElement>(null)
+  const requestIdRef = React.useRef(0)
+  const lastAttemptRef = React.useRef("")
 
   const loadPath = React.useCallback(async (path: string) => {
+    // Remember the attempted path so Retry re-requests the failed directory,
+    // not the last successful one.
+    lastAttemptRef.current = path
+    const requestId = (requestIdRef.current += 1)
     setLoading(true)
     setError(null)
     try {
       const listing = await getFiles(path)
+      // A newer navigation started while this request was in flight; its
+      // response would paint the wrong directory.
+      if (requestId !== requestIdRef.current) return null
       setRequestPath(path)
       setCurrentPath(listing.current_path)
       setEntries(sortEntries(listing.entries))
       setActiveIndex(0)
       return listing
     } catch (cause) {
+      if (requestId !== requestIdRef.current) return null
       setError(errorMessage(cause))
       return null
     } finally {
-      setLoading(false)
+      if (requestId === requestIdRef.current) setLoading(false)
     }
   }, [])
 
@@ -139,7 +149,9 @@ export function FileBrowser({ initialPath = "", onSelect, onCancel }: FileBrowse
   const goUp = async () => {
     if (atBase) return
     const listing = await loadPath(parentPath)
-    if (listing) setFocusRequest("up")
+    // The Up control disables at the base directory, where focusing it would
+    // drop keyboard focus to the document body — focus the filter instead.
+    if (listing) setFocusRequest(parentPath === "" ? "filter" : "up")
   }
 
   const goHome = async () => {
@@ -247,7 +259,7 @@ export function FileBrowser({ initialPath = "", onSelect, onCancel }: FileBrowse
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void loadPath(requestPath)}
+              onClick={() => void loadPath(lastAttemptRef.current)}
             >
               Retry
             </Button>

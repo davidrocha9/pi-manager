@@ -180,4 +180,77 @@ describe("CreateProjectDialog pipeline step", () => {
     await user.click(screen.getByRole("button", { name: "Back" }))
     expect(screen.getByLabelText("Project ID")).toHaveValue("demo")
   })
+
+  it("sends edited and added pipeline steps, not the defaults", async () => {
+    const user = userEvent.setup()
+    vi.mocked(createProject).mockResolvedValue(created)
+    renderDialog()
+    await goToPipeline(user)
+
+    const commands = screen.getAllByLabelText("Command")
+    await user.clear(commands[0])
+    await user.type(commands[0], "bun install --frozen-lockfile")
+
+    await user.click(screen.getByRole("button", { name: "Add step" }))
+    const names = screen.getAllByLabelText("Name")
+    await user.clear(names[names.length - 1])
+    await user.type(names[names.length - 1], "Migrate")
+    const updatedCommands = screen.getAllByLabelText("Command")
+    await user.type(updatedCommands[updatedCommands.length - 1], "bun run migrate")
+
+    await user.click(screen.getByRole("button", { name: "Create project" }))
+
+    await waitFor(() => expect(createProject).toHaveBeenCalledTimes(1))
+    const payload = vi.mocked(createProject).mock.calls[0][0]
+    expect(payload.pipeline[0]).toEqual({
+      name: "Install",
+      cmd: "bun install --frozen-lockfile",
+    })
+    expect(payload.pipeline[payload.pipeline.length - 1]).toEqual({
+      name: "Migrate",
+      cmd: "bun run migrate",
+    })
+  })
+
+  it("re-enables save after adding a step back to an empty pipeline", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await goToPipeline(user)
+
+    await user.click(screen.getByRole("button", { name: "Remove step 1" }))
+    await user.click(screen.getByRole("button", { name: "Remove step 1" }))
+    await user.click(screen.getByRole("button", { name: "Remove step 1" }))
+    expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: "Add step" }))
+    expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled()
+  })
+
+  it("trims id, description, and path before sending", async () => {
+    const user = userEvent.setup()
+    vi.mocked(createProject).mockResolvedValue(created)
+    renderDialog()
+
+    await user.type(screen.getByLabelText("Project ID"), "  demo  ")
+    await user.type(screen.getByLabelText("Description"), "  Demo project  ")
+    await user.type(screen.getByLabelText("Path to app"), "  /home/pi/demo  ")
+    await user.click(screen.getByRole("button", { name: "Next: configure pipeline" }))
+    await screen.findByRole("heading", { name: "Configure pipeline" })
+    await user.click(screen.getByRole("button", { name: "Create project" }))
+
+    await waitFor(() => expect(createProject).toHaveBeenCalledTimes(1))
+    const payload = vi.mocked(createProject).mock.calls[0][0]
+    expect(payload.id).toBe("demo")
+    expect(payload.description).toBe("Demo project")
+    expect(payload.path).toBe("/home/pi/demo")
+  })
+
+  it("keeps Next disabled for a whitespace-only id", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.type(screen.getByLabelText("Project ID"), "   ")
+
+    expect(screen.getByRole("button", { name: "Next: configure pipeline" })).toBeDisabled()
+  })
 })

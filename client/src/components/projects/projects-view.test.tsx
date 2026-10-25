@@ -233,6 +233,46 @@ describe("ProjectsView actions", () => {
     })
   })
 
+  it("recovers the list after a retry success", async () => {
+    const user = userEvent.setup()
+    renderView({ seed: false, reject: new Error("network down") })
+
+    expect(await screen.findByText("Could not load projects")).toBeInTheDocument()
+
+    vi.mocked(getProjects).mockResolvedValue([makeProject({ id: "back" })])
+    await user.click(screen.getByRole("button", { name: "Retry" }))
+
+    expect(await screen.findByTestId("project-row-back")).toBeInTheDocument()
+    expect(screen.queryByText("Could not load projects")).not.toBeInTheDocument()
+  })
+
+  it("restores the previous badge and raises a toast when stop fails", async () => {
+    let rejectStop: ((reason?: unknown) => void) | undefined
+    vi.mocked(stopProject).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectStop = reject
+        }),
+    )
+    const errorSpy = vi.spyOn(toast, "error")
+    const user = userEvent.setup()
+
+    renderView({ projects: [makeProject({ id: "alpha", status: "ACTIVE" })] })
+
+    const row = screen.getByTestId("project-row-alpha")
+    await user.click(within(row).getByRole("button", { name: "Stop alpha" }))
+
+    expect(await within(row).findByText("IDLE")).toBeInTheDocument()
+
+    await act(async () => {
+      rejectStop?.(new Error("boom"))
+    })
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Error stopping project: boom")
+    })
+    expect(await within(row).findByText("ACTIVE")).toBeInTheDocument()
+  })
+
   it("restores the previous badge and raises a toast when start fails", async () => {
     vi.mocked(startProject).mockRejectedValue(new Error("boom"))
     const errorSpy = vi.spyOn(toast, "error")
@@ -264,6 +304,43 @@ describe("ProjectsView actions", () => {
     await user.click(await screen.findByRole("button", { name: "Delete project" }))
 
     expect(vi.mocked(deleteProject).mock.calls[0][0]).toBe("alpha")
+  })
+
+  it("raises a toast when delete fails", async () => {
+    vi.mocked(deleteProject).mockRejectedValue(new Error("boom"))
+    const errorSpy = vi.spyOn(toast, "error")
+    const user = userEvent.setup()
+
+    renderView({ projects: [makeProject({ id: "alpha" })] })
+
+    const row = screen.getByTestId("project-row-alpha")
+    await user.click(within(row).getByRole("button", { name: "Delete alpha" }))
+    await user.click(await screen.findByRole("button", { name: "Delete project" }))
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Error deleting project: boom")
+    })
+  })
+
+  it("invalidates the projects query after a successful delete", async () => {
+    const user = userEvent.setup()
+    vi.mocked(deleteProject).mockResolvedValue("deleted")
+    const { client } = renderView({ projects: [makeProject({ id: "alpha" })] })
+    client.setQueryData<Project[]>(projectsQueryKey, [makeProject({ id: "alpha" })])
+
+    expect(await screen.findByTestId("project-row-alpha")).toBeInTheDocument()
+    const fetchCallsBefore = vi.mocked(getProjects).mock.calls.length
+
+    const row = screen.getByTestId("project-row-alpha")
+    await user.click(within(row).getByRole("button", { name: "Delete alpha" }))
+    await user.click(await screen.findByRole("button", { name: "Delete project" }))
+
+    await waitFor(() => expect(deleteProject).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(deleteProject).mock.calls[0][0]).toBe("alpha")
+    // The mounted list refetches when the delete invalidates its query.
+    await waitFor(() => {
+      expect(vi.mocked(getProjects).mock.calls.length).toBeGreaterThan(fetchCallsBefore)
+    })
   })
 })
 

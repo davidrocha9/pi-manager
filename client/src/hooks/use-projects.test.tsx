@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { getProjects, startProject, type Project } from "@/lib/api"
+import { getProjects, startProject, stopProject, type Project } from "@/lib/api"
 import { createTestQueryClient, queryWrapper } from "@/test/query-wrapper"
 
-import { projectsQueryKey, useProjects, useStartProject } from "./use-projects"
+import { projectsQueryKey, useProjects, useStartProject, useStopProject } from "./use-projects"
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
@@ -94,5 +94,81 @@ describe("useStartProject", () => {
       expect(result.current.isError).toBe(true)
     })
     expect(client.getQueryData<Project[]>(projectsQueryKey)?.[0]?.status).toBe("ACTIVE")
+  })
+})
+
+describe("useStopProject", () => {
+  it("applies IDLE immediately and restores the previous status on failure", async () => {
+    const active = { ...project, status: "ACTIVE" as const }
+    const client = createTestQueryClient()
+    client.setQueryData<Project[]>(projectsQueryKey, [active])
+    vi.mocked(getProjects).mockResolvedValue([active])
+
+    let rejectStop: (reason?: unknown) => void = () => {}
+    vi.mocked(stopProject).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectStop = reject
+        }),
+    )
+
+    const { result } = renderHook(() => useStopProject(), {
+      wrapper: queryWrapper(client),
+    })
+
+    act(() => {
+      result.current.mutate("demo")
+    })
+
+    await waitFor(() => {
+      expect(client.getQueryData<Project[]>(projectsQueryKey)?.[0]?.status).toBe("IDLE")
+    })
+
+    rejectStop(new Error("stop failed"))
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
+    expect(client.getQueryData<Project[]>(projectsQueryKey)?.[0]?.status).toBe("ACTIVE")
+  })
+
+  it("leaves a fresher polled status alone when the mutation fails", async () => {
+    const active = { ...project, status: "ACTIVE" as const }
+    const client = createTestQueryClient()
+    client.setQueryData<Project[]>(projectsQueryKey, [active])
+    vi.mocked(getProjects).mockResolvedValue([active])
+
+    let rejectStop: (reason?: unknown) => void = () => {}
+    vi.mocked(stopProject).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectStop = reject
+        }),
+    )
+
+    const { result } = renderHook(() => useStopProject(), {
+      wrapper: queryWrapper(client),
+    })
+
+    act(() => {
+      result.current.mutate("demo")
+    })
+
+    await waitFor(() => {
+      expect(client.getQueryData<Project[]>(projectsQueryKey)?.[0]?.status).toBe("IDLE")
+    })
+
+    // A poll lands while the mutation is in flight.
+    act(() => {
+      client.setQueryData<Project[]>(projectsQueryKey, [
+        { ...active, status: "FAILED" as const },
+      ])
+    })
+    rejectStop(new Error("stop failed"))
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
+    expect(client.getQueryData<Project[]>(projectsQueryKey)?.[0]?.status).toBe("FAILED")
   })
 })

@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createProject, deleteProject, getHealth, getProjects } from "./api"
+import {
+  createProject,
+  deleteProject,
+  getFiles,
+  getHealth,
+  getPiHealth,
+  getProjects,
+  startProject,
+  stopProject,
+} from "./api"
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -72,6 +81,48 @@ describe("api client", () => {
       "/api/v1/projects/a%2Fb%20c",
       expect.objectContaining({ method: "DELETE" }),
     )
+  })
+
+  it("posts start and stop to the percent-encoded project routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(jsonResponse({ status: "BOOTING" })))
+    vi.stubGlobal("fetch", fetchMock)
+
+    await startProject("a/b")
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/projects/a%2Fb/start",
+      expect.objectContaining({ method: "POST" }),
+    )
+
+    await stopProject("a/b")
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/projects/a%2Fb/stop",
+      expect.objectContaining({ method: "POST" }),
+    )
+  })
+
+  it("encodes the file browser path as a query string", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ current_path: "/home/pi", entries: [] }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await getFiles("a b/c")
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/fs?path=a%20b%2Fc",
+      expect.any(Object),
+    )
+  })
+
+  it("requests pi-health from its own endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ hostname: "pi" }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    await getPiHealth()
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/pi-health", expect.any(Object))
   })
 
   it("sends the project and pipeline in a single POST body", async () => {

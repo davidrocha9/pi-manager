@@ -44,10 +44,17 @@ function useProjectStatusMutation(
 
       return { previous }
     },
-    onError: (_error, _id, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(projectsQueryKey, context.previous)
-      }
+    onError: (_error, id, context) => {
+      if (!context?.previous) return
+      const rolledBack = context.previous.find((project) => project.id === id)
+      if (!rolledBack) return
+      queryClient.setQueryData<Project[]>(projectsQueryKey, (current) =>
+        current?.map((project) =>
+          // Restore only the mutated row, and only if it still shows the
+          // optimistic value — a fresher polled status must not be clobbered.
+          project.id === id && project.status === optimisticStatus ? rolledBack : project,
+        ),
+      )
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: projectsQueryKey })

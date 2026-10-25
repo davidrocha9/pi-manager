@@ -72,6 +72,23 @@ describe("downsample", () => {
   it("leaves short series untouched", () => {
     expect(downsample([1, 2, 3])).toEqual([1, 2, 3])
   })
+
+  it("samples on a fixed stride", () => {
+    const series = Array.from({ length: 1000 }, (_, i) => i)
+
+    const sampled = downsample(series)
+
+    expect(sampled[0]).toBe(0)
+    for (let i = 1; i < sampled.length; i += 1) {
+      expect(sampled[i] - sampled[i - 1]).toBe(3)
+    }
+  })
+
+  it("returns the series as-is when no reduction is possible", () => {
+    const series = Array.from({ length: 301 }, (_, i) => i)
+
+    expect(downsample(series)).toHaveLength(301)
+  })
 })
 
 describe("labelIndices", () => {
@@ -97,6 +114,27 @@ describe("labelIndices", () => {
 
     expect(labelIndices(series, "day")).toHaveLength(25)
     expect(labelIndices(series, "day")[0]).toBe(0)
+  })
+
+  it("yields daily midnights for the month timeframe", () => {
+    const base = new Date(2026, 5, 1, 0, 0)
+    const series = Array.from({ length: 30 }, (_, d) => ({
+      time: new Date(base.getTime() + d * 24 * 60 * 60 * 1000),
+      value: 10,
+    }))
+
+    expect(labelIndices(series, "month")).toHaveLength(30)
+  })
+
+  it("yields Monday midnights for the all timeframe", () => {
+    // 2026-06-01 is a Monday; weekly Monday-midnight points.
+    const base = new Date(2026, 5, 1, 0, 0)
+    const series = Array.from({ length: 5 }, (_, w) => ({
+      time: new Date(base.getTime() + w * 7 * 24 * 60 * 60 * 1000),
+      value: 10,
+    }))
+
+    expect(labelIndices(series, "all")).toEqual([0, 1, 2, 3, 4])
   })
 
   it("falls back to first and last when fewer than two labels match", () => {

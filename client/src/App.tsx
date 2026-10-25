@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/app-shell"
 import { PageHeader } from "@/components/layout/page-header"
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
 import { ProjectsView } from "@/components/projects/projects-view"
+import { PiHealthView } from "@/components/health/pi-health-view"
 import { useHealth } from "@/hooks/use-health"
 import { createQueryClient } from "@/lib/query-client"
 
@@ -42,7 +43,11 @@ function AppContent() {
             onCreateProject={() => setCreateOpen(true)}
           />
         </div>
-      ) : null}
+      ) : (
+        <div className="mt-6">
+          <PiHealthView />
+        </div>
+      )}
       <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </AppShell>
   )

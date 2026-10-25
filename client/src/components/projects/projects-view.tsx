@@ -3,6 +3,7 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
 import { EmptyState } from "@/components/empty-state"
+import { StaleBanner } from "@/components/stale-banner"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -232,6 +233,14 @@ export function ProjectsView({
           </span>
         </h2>
       </div>
+
+      {projectsQuery.isError && projectsQuery.data ? (
+        <StaleBanner
+          updatedAt={projectsQuery.dataUpdatedAt}
+          onRetry={() => void projectsQuery.refetch()}
+          retrying={projectsQuery.isFetching}
+        />
+      ) : null}
 
       {isPhone ? (
         <div className="grid gap-3">

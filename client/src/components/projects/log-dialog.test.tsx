@@ -103,4 +103,37 @@ describe("LogDialog", () => {
     await user.click(screen.getByRole("button", { name: "Jump to latest" }))
     expect(scroller.scrollTop).toBe(800)
   })
+
+  it("caps a very long log at the latest lines with a truncation notice", () => {
+    const lines = Array.from({ length: 600 }, (_, i) => `line ${i + 1}`)
+    const project = makeProject({ last_log: lines.join("\n") })
+    vi.mocked(getProjects).mockResolvedValue([project])
+    const client = createTestQueryClient()
+    client.setQueryData<Project[]>(projectsQueryKey, [project])
+
+    render(
+      <LogDialog open onOpenChange={vi.fn()} projectId="demo" />,
+      { wrapper: queryWrapper(client) },
+    )
+
+    expect(screen.getByText("Showing the latest 500 of 600 lines")).toBeInTheDocument()
+    expect(screen.queryByText("line 1", { exact: true })).not.toBeInTheDocument()
+    expect(screen.getByText(/line 600/)).toBeInTheDocument()
+  })
+
+  it("renders a short log in full with no truncation notice", async () => {
+    const project = makeProject({ last_log: "line 1\nline 2" })
+    vi.mocked(getProjects).mockResolvedValue([project])
+    const client = createTestQueryClient()
+    client.setQueryData<Project[]>(projectsQueryKey, [project])
+
+    render(
+      <LogDialog open onOpenChange={vi.fn()} projectId="demo" />,
+      { wrapper: queryWrapper(client) },
+    )
+
+    expect(await screen.findByText(/line 1/)).toBeInTheDocument()
+    expect(screen.getByText(/line 2/)).toBeInTheDocument()
+    expect(screen.queryByText(/Showing the latest/)).not.toBeInTheDocument()
+  })
 })

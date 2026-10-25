@@ -246,6 +246,22 @@ describe("ProjectsView actions", () => {
     expect(screen.queryByText("Could not load projects")).not.toBeInTheDocument()
   })
 
+  it("shows a stale banner with a working retry when refresh fails after success", async () => {
+    const user = userEvent.setup()
+    renderView({ reject: new Error("collector hiccup") })
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/Showing data from \d+s ago/)
+    expect(screen.getByTestId("project-row-demo")).toBeInTheDocument()
+
+    vi.mocked(getProjects).mockResolvedValue([makeProject({ id: "demo" })])
+    await user.click(screen.getByRole("button", { name: "Retry" }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    })
+    expect(screen.getByTestId("project-row-demo")).toBeInTheDocument()
+  })
+
   it("restores the previous badge and raises a toast when stop fails", async () => {
     let rejectStop: ((reason?: unknown) => void) | undefined
     vi.mocked(stopProject).mockImplementation(

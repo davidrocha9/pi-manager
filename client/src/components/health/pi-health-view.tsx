@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Clock, Gauge, Server } from "lucide-react"
 
+import { StaleBanner } from "@/components/stale-banner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -122,6 +123,13 @@ export function PiHealthView() {
 
   return (
     <div className="flex flex-col gap-4">
+      {piHealth.isError && health ? (
+        <StaleBanner
+          updatedAt={piHealth.dataUpdatedAt}
+          onRetry={() => void piHealth.refetch()}
+          retrying={piHealth.isFetching}
+        />
+      ) : null}
       <IdentityCards health={health} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">

@@ -121,6 +121,23 @@ describe("PiHealthView", () => {
     await waitFor(() => expect(getPiHealth).toHaveBeenCalledTimes(2))
   })
 
+  it("shows a stale banner with a working retry when refresh fails after success", async () => {
+    const user = userEvent.setup()
+    renderView(makeHealth(), new Error("collector hiccup"))
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/Showing data from \d+s ago/)
+    expect(screen.queryByText("Failed to load Pi health data")).not.toBeInTheDocument()
+
+    const fresh = makeHealth({ hostname: "pi-box-2" })
+    vi.mocked(getPiHealth).mockResolvedValue(fresh)
+    await user.click(screen.getByRole("button", { name: "Retry" }))
+
+    expect(await screen.findByText("pi-box-2")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    })
+  })
+
   it("shows skeletons while the first request is pending", () => {
     vi.mocked(getPiHealth).mockImplementation(() => new Promise(() => {}))
     const client = createTestQueryClient()

@@ -14,10 +14,23 @@ type LogDialogProps = {
 
 const EMPTY_LOG = "No logs available yet."
 
+const MAX_LOG_LINES = 500
+
+function tailLines(text: string, maxLines: number): { text: string; total: number } {
+  const lines = text.split("\n")
+  if (lines.length <= maxLines) return { text, total: lines.length }
+  return { text: lines.slice(-maxLines).join("\n"), total: lines.length }
+}
+
 export function LogDialog({ open, onOpenChange, projectId }: LogDialogProps) {
   const { data: projects } = useProjects()
   const project = projects?.find((candidate) => candidate.id === projectId)
   const log = project?.last_log || ""
+  const { text: visibleLog, total: totalLines } = React.useMemo(
+    () => tailLines(log, MAX_LOG_LINES),
+    [log],
+  )
+  const truncated = totalLines > MAX_LOG_LINES
 
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const pinnedRef = React.useRef(true)
@@ -76,6 +89,11 @@ export function LogDialog({ open, onOpenChange, projectId }: LogDialogProps) {
             <Terminal className="size-3.5" aria-hidden="true" />
             Output console
           </div>
+          {truncated ? (
+            <p className="border-b border-white/10 px-4 py-1.5 text-[11px] text-console-foreground/60">
+              Showing the latest {MAX_LOG_LINES} of {totalLines} lines
+            </p>
+          ) : null}
           <div
             ref={scrollRef}
             onScroll={handleScroll}
@@ -83,7 +101,7 @@ export function LogDialog({ open, onOpenChange, projectId }: LogDialogProps) {
             className="min-h-0 flex-1 overflow-auto p-4"
           >
             <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-console-foreground">
-              {log || EMPTY_LOG}
+              {visibleLog || EMPTY_LOG}
             </pre>
           </div>
         </div>

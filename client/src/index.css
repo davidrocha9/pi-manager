@@ -56,6 +56,8 @@
   --color-neutral: var(--muted-foreground);
   --color-neutral-foreground: var(--muted-foreground);
   --color-neutral-surface: var(--muted);
+  --color-console: var(--console);
+  --color-console-foreground: var(--console-foreground);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -100,6 +102,9 @@
   --danger: oklch(0.58 0.2 22);
   --danger-foreground: oklch(0.46 0.17 22);
   --danger-surface: oklch(0.955 0.02 20);
+
+  --console: oklch(0.16 0.008 265);
+  --console-foreground: oklch(0.88 0.01 150);
 
   --chart-1: oklch(0.55 0.19 275);
   --chart-2: oklch(0.55 0.2 300);
@@ -147,6 +152,9 @@
   --danger: oklch(0.68 0.19 22);
   --danger-foreground: oklch(0.8 0.13 22);
   --danger-surface: oklch(0.27 0.06 20);
+
+  --console: oklch(0.16 0.008 265);
+  --console-foreground: oklch(0.88 0.01 150);
 
   --chart-1: oklch(0.7 0.17 275);
   --chart-2: oklch(0.72 0.18 300);

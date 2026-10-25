@@ -75,7 +75,7 @@ export function ProjectForm({ value, busy, onChange, onBrowse, onNext }: Project
             className="h-9"
           />
           <p id="project-ports-hint" className="text-xs text-muted-foreground">
-            Optional, comma separated. Leave empty when the project opens no ports.
+            Optional. Leave empty and running ports are detected automatically.
           </p>
         </Field>
 

@@ -320,7 +320,12 @@ func (h *Handler) handleProjectAction(w http.ResponseWriter, r *http.Request) {
 						break
 					}
 
-					// Attempt auto-discovery of ports
+					// Attempt auto-discovery of ports for the lifetime of this step.
+					// Slow boots (install/build taking minutes, dev servers
+					// binding late) would miss a fixed-window scan entirely,
+					// so the loop runs until the step's process exits and the
+					// client learns the ports on its next 2s poll.
+					stepDone := make(chan struct{})
 					go func(pid int) {
 						// Wait a moment for process to establish PGID
 						time.Sleep(500 * time.Millisecond)
@@ -329,16 +334,27 @@ func (h *Handler) handleProjectAction(w http.ResponseWriter, r *http.Request) {
 							pgid = pid // fallback
 						}
 
-						// Try multiple times over a few seconds
-						for i := 0; i < 30; i++ {
-							time.Sleep(1 * time.Second)
-							ports := findPortsForPGID(pgid)
-							if len(ports) > 0 {
+						ticker := time.NewTicker(2 * time.Second)
+						defer ticker.Stop()
+						for {
+							select {
+							case <-stepDone:
+								return
+							case <-ticker.C:
+								ports := findPortsForPGID(pgid)
+								if len(ports) == 0 {
+									continue
+								}
 								projLock.Lock()
-								// Update if ports list changed, regardless of status (active services might persist after boot script)
-								if !slicesEqual(proj.Ports, ports) {
-									proj.Ports = ports
-									h.store.AddProject(proj)
+								// Re-read instead of writing the stale local
+								// copy: concurrent step updates (progress,
+								// current step, logs) must not be clobbered.
+								if fresh, ok := h.store.GetProject(proj.ID); ok {
+									// Update if ports list changed, regardless of status (active services might persist after boot script)
+									if !slicesEqual(fresh.Ports, ports) {
+										fresh.Ports = ports
+										h.store.AddProject(fresh)
+									}
 								}
 								projLock.Unlock()
 							}
@@ -357,6 +373,7 @@ func (h *Handler) handleProjectAction(w http.ResponseWriter, r *http.Request) {
 					}()
 
 					finalErr = cmd.Wait()
+					close(stepDone)
 					if finalErr != nil {
 						combinedOutput.WriteString(fmt.Sprintf("\nERROR in step '%s': %v\n", step.Name, finalErr))
 						break

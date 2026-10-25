@@ -4,6 +4,7 @@ import { useState } from "react"
 import type { TabId } from "@/components/layout/app-sidebar"
 import { AppShell } from "@/components/layout/app-shell"
 import { PageHeader } from "@/components/layout/page-header"
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
 import { ProjectsView } from "@/components/projects/projects-view"
 import { useHealth } from "@/hooks/use-health"
 import { createQueryClient } from "@/lib/query-client"
@@ -13,6 +14,7 @@ const queryClient = createQueryClient()
 function AppContent() {
   const [activeTab, setActiveTab] = useState<TabId>("projects")
   const [searchQuery, setSearchQuery] = useState("")
+  const [createOpen, setCreateOpen] = useState(false)
   const health = useHealth()
 
   const pageTitle = activeTab === "projects" ? "Dashboard" : "Pi Health"
@@ -22,7 +24,7 @@ function AppContent() {
     <AppShell
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      onNewProject={() => undefined}
+      onNewProject={() => setCreateOpen(true)}
       showSearch={activeTab === "projects"}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
@@ -37,10 +39,11 @@ function AppContent() {
           <ProjectsView
             searchQuery={searchQuery}
             onClearSearch={() => setSearchQuery("")}
-            onCreateProject={() => undefined}
+            onCreateProject={() => setCreateOpen(true)}
           />
         </div>
       ) : null}
+      <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </AppShell>
   )
 }

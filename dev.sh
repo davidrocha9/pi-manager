@@ -4,6 +4,15 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
+command -v go >/dev/null 2>&1 || {
+  echo "Error: go is not installed. Install it first: brew install go (or https://go.dev/dl/)"
+  exit 1
+}
+command -v bun >/dev/null 2>&1 || {
+  echo "Error: bun is not installed. Install it first: https://bun.sh/"
+  exit 1
+}
+
 # Function to handle cleanup on exit
 cleanup() {
     echo ""

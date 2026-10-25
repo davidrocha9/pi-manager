@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -761,6 +762,62 @@ func findPortsForPGID(pgid int) []string {
 
 	out := make([]string, 0, len(foundPorts))
 	for p := range foundPorts {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	if len(out) == 0 && runtime.GOOS == "darwin" {
+		// No /proc on macOS, so the scan above always comes back empty.
+		return findPortsViaLsof(pgid)
+	}
+	return out
+}
+
+// findPortsViaLsof is the port-discovery fallback for systems without /proc
+// (e.g. macOS dev machines). It lists PIDs in the process group with pgrep
+// and their listening TCP sockets with lsof.
+func findPortsViaLsof(pgid int) []string {
+	pgrepOut, err := exec.Command("pgrep", "-g", strconv.Itoa(pgid)).Output()
+	if err != nil {
+		return nil
+	}
+	var pids []string
+	for _, line := range strings.Split(string(pgrepOut), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			pids = append(pids, line)
+		}
+	}
+	if len(pids) == 0 {
+		return nil
+	}
+
+	// -a ANDs the selectors: only listening TCP sockets of these PIDs.
+	// -F pn gives machine-parseable output (p<pid>, n<name>); -P -n keep
+	// ports numeric. lsof exits non-zero on no match, so parse whatever
+	// stdout we got instead of bailing on err alone.
+	lsofOut, err := exec.Command(
+		"lsof", "-a", "-p", strings.Join(pids, ","), "-iTCP", "-sTCP:LISTEN", "-P", "-n", "-F", "pn",
+	).Output()
+	if err != nil && len(lsofOut) == 0 {
+		return nil
+	}
+
+	found := map[string]bool{}
+	for _, line := range strings.Split(string(lsofOut), "\n") {
+		if !strings.HasPrefix(line, "n") || len(line) < 2 {
+			continue
+		}
+		name := line[1:]
+		idx := strings.LastIndex(name, ":")
+		if idx == -1 || idx+1 >= len(name) {
+			continue
+		}
+		if port, err := strconv.Atoi(name[idx+1:]); err == nil && port >= 1 && port <= 65535 {
+			found[strconv.Itoa(port)] = true
+		}
+	}
+
+	out := make([]string, 0, len(found))
+	for p := range found {
 		out = append(out, p)
 	}
 	sort.Strings(out)

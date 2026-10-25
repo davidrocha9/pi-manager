@@ -725,10 +725,8 @@ func findPortsForPGID(pgid int) []string {
 	pids := collectProcessGroup(pgid)
 
 	// 2. Build a map of inode -> port from /proc/net/tcp
+	// (empty on systems without /proc; the darwin fallback below covers that)
 	inodeToPorts := parseNetTCP()
-	if len(inodeToPorts) == 0 {
-		return nil
-	}
 
 	foundPorts := make(map[string]bool)
 	// 3. For each PID, check its file descriptors for socket inodes

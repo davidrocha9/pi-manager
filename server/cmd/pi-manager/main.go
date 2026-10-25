@@ -66,6 +66,10 @@ func main() {
 		}
 	}()
 
+	// pick back up where we left off: relaunch projects that were running
+	// when the last snapshot was taken (e.g. after a host reboot)
+	go h.ResumeRunningProjects()
+
 	// graceful shutdown
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)

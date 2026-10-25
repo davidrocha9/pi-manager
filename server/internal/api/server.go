@@ -37,7 +37,7 @@ type Handler struct {
 	activeTasks  sync.Map // map[string]context.CancelFunc
 }
 
-func NewHandler(s *state.Store, sd *systemd.Client, start time.Time, allowActions bool, fsBase string) http.Handler {
+func NewHandler(s *state.Store, sd *systemd.Client, start time.Time, allowActions bool, fsBase string) *Handler {
 	if fsBase == "" {
 		fsBase = "/"
 	}
@@ -258,149 +258,7 @@ func (h *Handler) handleProjectAction(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// Run in background
-			ctx, cancel := context.WithCancel(context.Background())
-			h.activeTasks.Store(id, cancel)
-
-			go func(proj state.Project) {
-				defer h.activeTasks.Delete(id)
-				defer cancel()
-
-				proj.Status = "BOOTING"
-				proj.LastLog = ""
-				proj.Progress = 0
-				h.store.AddProject(proj) // Update status to BOOTING
-
-				var combinedOutput strings.Builder
-				var finalErr error
-				var projLock sync.Mutex
-				totalSteps := len(proj.Pipeline)
-
-				for i, step := range proj.Pipeline {
-					if ctx.Err() != nil {
-						finalErr = ctx.Err()
-						break
-					}
-
-					projLock.Lock()
-					proj.CurrentStep = step.Name
-					// Progress: if we have 3 steps, they should be 33, 66, 100
-					proj.Progress = (i + 1) * 100 / totalSteps
-					h.store.AddProject(proj)
-
-					combinedOutput.WriteString(fmt.Sprintf("===> [%d/%d] Running Step: %s\n", i+1, totalSteps, step.Name))
-					proj.LastLog = combinedOutput.String()
-					h.store.AddProject(proj)
-					projLock.Unlock()
-
-					cmdStr := step.Cmd
-					if strings.Contains(cmdStr, "boot.sh") || strings.Contains(cmdStr, "dev.sh") {
-						cmdStr = "tailscale up && " + cmdStr
-					}
-
-					cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
-					if proj.Path != "" {
-						cmd.Dir = proj.Path
-					}
-					// Set process group so we can kill children (like dev servers)
-					cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-					// Use a writer that updates the store in real-time
-					writer := &logWriter{
-						h:        h,
-						proj:     &proj,
-						projLock: &projLock,
-						build:    &combinedOutput,
-					}
-					cmd.Stdout = writer
-					cmd.Stderr = writer
-
-					if err := cmd.Start(); err != nil {
-						combinedOutput.WriteString(fmt.Sprintf("Failed to start: %v\n", err))
-						finalErr = err
-						break
-					}
-
-					// Attempt auto-discovery of ports for the lifetime of this step.
-					// Slow boots (install/build taking minutes, dev servers
-					// binding late) would miss a fixed-window scan entirely,
-					// so the loop runs until the step's process exits and the
-					// client learns the ports on its next 2s poll.
-					stepDone := make(chan struct{})
-					go func(pid int) {
-						// Wait a moment for process to establish PGID
-						time.Sleep(500 * time.Millisecond)
-						pgid, err := syscall.Getpgid(pid)
-						if err != nil {
-							pgid = pid // fallback
-						}
-
-						ticker := time.NewTicker(2 * time.Second)
-						defer ticker.Stop()
-						for {
-							select {
-							case <-stepDone:
-								return
-							case <-ticker.C:
-								ports := findPortsForPGID(pgid)
-								if len(ports) == 0 {
-									continue
-								}
-								projLock.Lock()
-								// Re-read instead of writing the stale local
-								// copy: concurrent step updates (progress,
-								// current step, logs) must not be clobbered.
-								if fresh, ok := h.store.GetProject(proj.ID); ok {
-									// Update if ports list changed, regardless of status (active services might persist after boot script)
-									if !slicesEqual(fresh.Ports, ports) {
-										fresh.Ports = ports
-										h.store.AddProject(fresh)
-									}
-								}
-								projLock.Unlock()
-							}
-						}
-					}(cmd.Process.Pid)
-
-					// Helper to kill the entire process group if context is cancelled
-					go func() {
-						<-ctx.Done()
-						if cmd.Process != nil {
-							pgid, err := syscall.Getpgid(cmd.Process.Pid)
-							if err == nil {
-								syscall.Kill(-pgid, syscall.SIGKILL)
-							}
-						}
-					}()
-
-					finalErr = cmd.Wait()
-					close(stepDone)
-					if finalErr != nil {
-						combinedOutput.WriteString(fmt.Sprintf("\nERROR in step '%s': %v\n", step.Name, finalErr))
-						break
-					}
-					combinedOutput.WriteString("\n")
-				}
-
-				projLock.Lock()
-				proj.CurrentStep = ""
-				if finalErr != nil {
-					// Check if context was canceled or if task was removed from active map (user stop)
-					_, isActive := h.activeTasks.Load(id)
-					if finalErr == context.Canceled || ctx.Err() == context.Canceled || !isActive {
-						proj.Status = "IDLE"
-						combinedOutput.WriteString("\nStopped by user.\n")
-					} else {
-						proj.Status = "FAILED"
-					}
-				} else {
-					proj.Status = "ACTIVE"
-				}
-				proj.LastLog = combinedOutput.String()
-				h.store.AddProject(proj)
-				h.store.Snapshot()
-				projLock.Unlock()
-			}(p)
+			h.launchProject(id)
 
 			writeJSON(w, map[string]string{"status": "started"})
 			return
@@ -428,6 +286,252 @@ func (h *Handler) handleProjectAction(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+}
+
+// launchProject runs a project's pipeline in the background, exactly as if
+// Start had been pressed. The boot resumer calls it to pick projects back up
+// after a restart.
+func (h *Handler) launchProject(id string) {
+	p, ok := h.store.GetProject(id)
+	if !ok {
+		return
+	}
+
+	// Run in background
+	ctx, cancel := context.WithCancel(context.Background())
+	h.activeTasks.Store(id, cancel)
+
+	go func(proj state.Project) {
+		defer h.activeTasks.Delete(id)
+		defer cancel()
+
+		proj.Status = "BOOTING"
+		proj.LastLog = ""
+		proj.Progress = 0
+		h.store.AddProject(proj) // Update status to BOOTING
+
+		var combinedOutput strings.Builder
+		var finalErr error
+		var projLock sync.Mutex
+		totalSteps := len(proj.Pipeline)
+
+		for i, step := range proj.Pipeline {
+			if ctx.Err() != nil {
+				finalErr = ctx.Err()
+				break
+			}
+
+			projLock.Lock()
+			proj.CurrentStep = step.Name
+			// Progress: if we have 3 steps, they should be 33, 66, 100
+			proj.Progress = (i + 1) * 100 / totalSteps
+			h.store.AddProject(proj)
+
+			combinedOutput.WriteString(fmt.Sprintf("===> [%d/%d] Running Step: %s\n", i+1, totalSteps, step.Name))
+			proj.LastLog = combinedOutput.String()
+			h.store.AddProject(proj)
+			projLock.Unlock()
+
+			cmdStr := step.Cmd
+			if strings.Contains(cmdStr, "boot.sh") || strings.Contains(cmdStr, "dev.sh") {
+				cmdStr = "tailscale up && " + cmdStr
+			}
+
+			cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+			if proj.Path != "" {
+				cmd.Dir = proj.Path
+			}
+			// Set process group so we can kill children (like dev servers)
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+			// Use a writer that updates the store in real-time
+			writer := &logWriter{
+				h:        h,
+				proj:     &proj,
+				projLock: &projLock,
+				build:    &combinedOutput,
+			}
+			cmd.Stdout = writer
+			cmd.Stderr = writer
+
+			if err := cmd.Start(); err != nil {
+				combinedOutput.WriteString(fmt.Sprintf("Failed to start: %v\n", err))
+				finalErr = err
+				break
+			}
+
+			// Attempt auto-discovery of ports for the lifetime of this step.
+			// Slow boots (install/build taking minutes, dev servers
+			// binding late) would miss a fixed-window scan entirely,
+			// so the loop runs until the step's process exits and the
+			// client learns the ports on its next 2s poll.
+			stepDone := make(chan struct{})
+			go func(pid int) {
+				// Wait a moment for process to establish PGID
+				time.Sleep(500 * time.Millisecond)
+				pgid, err := syscall.Getpgid(pid)
+				if err != nil {
+					pgid = pid // fallback
+				}
+
+				ticker := time.NewTicker(2 * time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-stepDone:
+						return
+					case <-ticker.C:
+						ports := findPortsForPGID(pgid)
+						if len(ports) == 0 {
+							continue
+						}
+						projLock.Lock()
+						// Re-read instead of writing the stale local
+						// copy: concurrent step updates (progress,
+						// current step, logs) must not be clobbered.
+						if fresh, ok := h.store.GetProject(proj.ID); ok {
+							// Update if ports list changed, regardless of status (active services might persist after boot script)
+							if !slicesEqual(fresh.Ports, ports) {
+								fresh.Ports = ports
+								h.store.AddProject(fresh)
+							}
+						}
+						projLock.Unlock()
+					}
+				}
+			}(cmd.Process.Pid)
+
+			// Helper to kill the entire process group if context is cancelled
+			go func() {
+				<-ctx.Done()
+				if cmd.Process != nil {
+					pgid, err := syscall.Getpgid(cmd.Process.Pid)
+					if err == nil {
+						syscall.Kill(-pgid, syscall.SIGKILL)
+					}
+				}
+			}()
+
+			finalErr = cmd.Wait()
+			close(stepDone)
+			if finalErr != nil {
+				combinedOutput.WriteString(fmt.Sprintf("\nERROR in step '%s': %v\n", step.Name, finalErr))
+				break
+			}
+			combinedOutput.WriteString("\n")
+		}
+
+		projLock.Lock()
+		proj.CurrentStep = ""
+		if finalErr != nil {
+			// Check if context was canceled or if task was removed from active map (user stop)
+			_, isActive := h.activeTasks.Load(id)
+			if finalErr == context.Canceled || ctx.Err() == context.Canceled || !isActive {
+				proj.Status = "IDLE"
+				combinedOutput.WriteString("\nStopped by user.\n")
+			} else {
+				proj.Status = "FAILED"
+			}
+		} else {
+			proj.Status = "ACTIVE"
+		}
+		proj.LastLog = combinedOutput.String()
+		h.store.AddProject(proj)
+		h.store.Snapshot()
+		projLock.Unlock()
+	}(p)
+}
+
+// ResumeRunningProjects picks back up where the app left off: every project
+// that was ACTIVE or mid-pipeline (BOOTING) when the last snapshot was taken
+// is relaunched, unless one of its known ports is already listening (the
+// process survived the restart, e.g. an app-only restart), in which case its
+// state is adopted as-is. Launches are staggered to avoid a thundering herd
+// on a fresh boot. When actions are disabled nothing is relaunched — stale
+// running statuses are reset to IDLE instead.
+func (h *Handler) ResumeRunningProjects() {
+	var toResume []state.Project
+	for _, p := range h.store.GetProjects() {
+		if p.Status == "ACTIVE" || p.Status == "BOOTING" {
+			toResume = append(toResume, p)
+		}
+	}
+	if len(toResume) == 0 {
+		return
+	}
+
+	if !h.allowActions {
+		log.Printf("auto-resume skipped for %d project(s): actions disabled; resetting to IDLE", len(toResume))
+		for _, p := range toResume {
+			p.Status = "IDLE"
+			p.Progress = 0
+			p.CurrentStep = ""
+			h.store.AddProject(p)
+		}
+		return
+	}
+
+	for _, p := range toResume {
+		if len(p.Ports) > 0 && anyPortListening(p.Ports) {
+			log.Printf("project %s: ports %v already listening, adopting running state", p.ID, p.Ports)
+			continue
+		}
+		log.Printf("auto-resuming project %s (was %s)", p.ID, p.Status)
+		h.launchProject(p.ID)
+		time.Sleep(3 * time.Second)
+	}
+}
+
+// anyPortListening reports whether any of the given ports currently has a TCP
+// listener, regardless of owning process. Used on boot to avoid relaunching
+// (and duplicating) a project whose processes survived the restart.
+func anyPortListening(ports []string) bool {
+	if len(ports) == 0 {
+		return false
+	}
+	want := make(map[string]bool, len(ports))
+	for _, p := range ports {
+		want[p] = true
+	}
+	for _, port := range parseNetTCP() {
+		if want[port] {
+			return true
+		}
+	}
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	// No /proc on macOS: fall back to a system-wide lsof scan.
+	out, err := exec.Command("lsof", "-iTCP", "-sTCP:LISTEN", "-P", "-n", "-F", "n").Output()
+	if err != nil && len(out) == 0 {
+		return false
+	}
+	for port := range lsofNamesToPorts(out) {
+		if want[port] {
+			return true
+		}
+	}
+	return false
+}
+
+// lsofNamesToPorts extracts listening port numbers from lsof -F n output,
+// where each socket is reported as an `n<addr>:<port>` line.
+func lsofNamesToPorts(out []byte) map[string]bool {
+	found := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.HasPrefix(line, "n") || len(line) < 2 {
+			continue
+		}
+		name := line[1:]
+		idx := strings.LastIndex(name, ":")
+		if idx == -1 || idx+1 >= len(name) {
+			continue
+		}
+		if port, err := strconv.Atoi(name[idx+1:]); err == nil && port >= 1 && port <= 65535 {
+			found[strconv.Itoa(port)] = true
+		}
+	}
+	return found
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -799,20 +903,7 @@ func findPortsViaLsof(pgid int) []string {
 		return nil
 	}
 
-	found := map[string]bool{}
-	for _, line := range strings.Split(string(lsofOut), "\n") {
-		if !strings.HasPrefix(line, "n") || len(line) < 2 {
-			continue
-		}
-		name := line[1:]
-		idx := strings.LastIndex(name, ":")
-		if idx == -1 || idx+1 >= len(name) {
-			continue
-		}
-		if port, err := strconv.Atoi(name[idx+1:]); err == nil && port >= 1 && port <= 65535 {
-			found[strconv.Itoa(port)] = true
-		}
-	}
+	found := lsofNamesToPorts(lsofOut)
 
 	out := make([]string, 0, len(found))
 	for p := range found {

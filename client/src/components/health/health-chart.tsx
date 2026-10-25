@@ -2,6 +2,7 @@ import * as React from "react"
 import { Activity } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
+import { EmptyState } from "@/components/empty-state"
 import {
   ChartContainer,
   ChartTooltip,
@@ -21,6 +22,9 @@ import {
   type TimeframeId,
 } from "@/lib/health"
 
+const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 }
+const AXIS_TICK = { fontSize: 10 }
+
 type HealthChartProps = {
   history: PiHistoryPoint[]
   metric: MetricId
@@ -28,28 +32,45 @@ type HealthChartProps = {
   now?: number
 }
 
-export function HealthChart({ history, metric, timeframe, now = Date.now() }: HealthChartProps) {
+export function HealthChart({ history, metric, timeframe, now: nowProp }: HealthChartProps) {
   const config = METRICS[metric]
   const gradientId = React.useId().replace(/:/g, "")
+
+  // Pinned to the poll response: Date.now() in render would bust every memo below.
+  const now = React.useMemo(
+    () => nowProp ?? Date.now(),
+    // `history` identity changes on each poll, which is exactly when `now` must advance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nowProp, history, timeframe],
+  )
 
   const series = React.useMemo(() => {
     const filtered = filterByTimeframe(history, timeframe, now)
     return downsample(toChartPoints(filtered, metric))
   }, [history, metric, timeframe, now])
 
-  const data = React.useMemo(
-    () =>
-      series.map((point) => ({
-        t: point.time.getTime(),
-        value: point.value,
-      })),
-    [series],
-  )
+  const { data, min, max, latest, latestTime } = React.useMemo(() => {
+    let min = Number.POSITIVE_INFINITY
+    let max = Number.NEGATIVE_INFINITY
+    const data = series.map((point) => {
+      if (point.value < min) min = point.value
+      if (point.value > max) max = point.value
+      return { t: point.time.getTime(), value: point.value }
+    })
+    const last = series[series.length - 1]
+    return { data, min, max, latest: last?.value ?? 0, latestTime: last?.time }
+  }, [series])
 
-  const ticks = React.useMemo(
-    () => labelIndices(series, timeframe).map((index) => data[index]?.t ?? 0),
-    [series, timeframe, data],
-  )
+  const tickLabels = React.useMemo(() => {
+    const labels = new Map<number, string>()
+    for (const index of labelIndices(series, timeframe)) {
+      const t = series[index]?.time.getTime()
+      if (t !== undefined) labels.set(t, formatXLabel(new Date(t), timeframe))
+    }
+    return labels
+  }, [series, timeframe])
+
+  const ticks = React.useMemo(() => [...tickLabels.keys()], [tickLabels])
 
   const chartConfig = React.useMemo(
     () =>
@@ -59,41 +80,49 @@ export function HealthChart({ history, metric, timeframe, now = Date.now() }: He
     [config],
   )
 
-  const summary = React.useMemo(() => {
-    if (series.length === 0) return null
-    const values = series.map((point) => point.value)
-    return {
-      min: Math.min(...values),
-      max: Math.max(...values),
-      latest: values[values.length - 1],
-      latestTime: series[series.length - 1].time,
-    }
-  }, [series])
+  const domain = React.useMemo(() => yDomain(metric), [metric])
 
-  if (series.length === 0 || !summary) {
+  const formatTick = React.useCallback(
+    (tick: number | string) => tickLabels.get(Number(tick)) ?? "",
+    [tickLabels],
+  )
+  const formatAxisValue = React.useCallback(
+    (tick: number | string) => `${tick}${config.unit}`,
+    [config.unit],
+  )
+  const formatTooltipLabel = React.useCallback(
+    (label: unknown) => new Date(Number(label)).toLocaleString(),
+    [],
+  )
+  const formatTooltipValue = React.useCallback(
+    (value: number | string) => `${Number(value).toFixed(1)}${config.unit}`,
+    [config.unit],
+  )
+
+  if (series.length === 0 || latestTime === undefined) {
     return (
-      <div className="flex h-[220px] w-full flex-col items-center justify-center gap-2 text-muted-foreground sm:min-h-[280px]">
-        <Activity className="animate-pulse" size={24} aria-hidden="true" />
-        <p className="text-[10px] font-bold tracking-widest uppercase">
-          No data for this timeframe
-        </p>
-      </div>
+      <EmptyState
+        icon={Activity}
+        title="No data for this timeframe"
+        description={`No ${config.label.toLowerCase()} readings fall inside the selected window.`}
+        className="h-[220px] border-0 bg-transparent sm:min-h-[280px]"
+      />
     )
   }
 
   const ariaLabel =
-    `${config.label} chart, latest ${summary.latest.toFixed(1)}${config.unit}, ` +
-    `ranging from ${summary.min.toFixed(1)}${config.unit} to ${summary.max.toFixed(1)}${config.unit}`
+    `${config.label} chart, latest ${latest.toFixed(1)}${config.unit}, ` +
+    `ranging from ${min.toFixed(1)}${config.unit} to ${max.toFixed(1)}${config.unit}`
 
   return (
-    <div>
+    <>
       <ChartContainer
         config={chartConfig}
         role="img"
         aria-label={ariaLabel}
         className="h-[220px] w-full sm:min-h-[280px]"
       >
-        <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <AreaChart data={data} margin={CHART_MARGIN}>
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={config.color} stopOpacity={0.35} />
@@ -106,29 +135,25 @@ export function HealthChart({ history, metric, timeframe, now = Date.now() }: He
             type="number"
             domain={["dataMin", "dataMax"]}
             ticks={ticks}
-            tickFormatter={(tick: number | string) =>
-              formatXLabel(new Date(Number(tick)), timeframe)
-            }
+            tickFormatter={formatTick}
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 10 }}
+            tick={AXIS_TICK}
             minTickGap={8}
           />
           <YAxis
-            domain={yDomain(metric)}
-            tickFormatter={(tick: number | string) => `${tick}${config.unit}`}
+            domain={domain}
+            tickFormatter={formatAxisValue}
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 10 }}
+            tick={AXIS_TICK}
             width={48}
           />
           <ChartTooltip
             content={
               <ChartTooltipContent
-                labelFormatter={(label: unknown) =>
-                  new Date(Number(label)).toLocaleString()
-                }
-                formatter={(value) => `${Number(value).toFixed(1)}${config.unit}`}
+                labelFormatter={formatTooltipLabel}
+                formatter={(value) => formatTooltipValue(value as number | string)}
               />
             }
           />
@@ -143,12 +168,11 @@ export function HealthChart({ history, metric, timeframe, now = Date.now() }: He
         </AreaChart>
       </ChartContainer>
       <p className="sr-only">
-        {config.label}: latest {summary.latest.toFixed(1)}
-        {config.unit} at {summary.latestTime.toLocaleString()}, minimum{" "}
-        {summary.min.toFixed(1)}
-        {config.unit}, maximum {summary.max.toFixed(1)}
+        {config.label}: latest {latest.toFixed(1)}
+        {config.unit} at {latestTime.toLocaleString()}, minimum {min.toFixed(1)}
+        {config.unit}, maximum {max.toFixed(1)}
         {config.unit}.
       </p>
-    </div>
+    </>
   )
 }

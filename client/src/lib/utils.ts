@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 /**
  * Dialogs become near-full-height sheets below 640px (R17).
  * Applied on top of the vendored dialog's centered positioning.

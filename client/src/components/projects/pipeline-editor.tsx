@@ -1,9 +1,11 @@
 import { ArrowLeft, Play, Plus, X } from "lucide-react"
 
+import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { PipelineStep } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 export const DEFAULT_PIPELINE: PipelineStep[] = [
   { name: "Install", cmd: "bun install" },
@@ -54,9 +56,11 @@ export function PipelineEditor({
       </div>
 
       {pipeline.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-          Add at least one execution step before creating the project.
-        </p>
+        <EmptyState
+          title="No execution steps"
+          description="Add at least one execution step before creating the project."
+          className="py-6"
+        />
       ) : (
         <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
           {pipeline.map((step, index) => (
@@ -66,30 +70,23 @@ export function PipelineEditor({
               data-testid={`pipeline-step-${index}`}
             >
               <div className="grid gap-3 sm:grid-cols-4">
-                <div className="space-y-1 sm:col-span-1">
-                  <Label htmlFor={`step-name-${index}`} className="text-[10px] uppercase">
-                    Name
-                  </Label>
-                  <Input
-                    id={`step-name-${index}`}
-                    value={step.name}
-                    onChange={(event) => updateStep(index, { name: event.target.value })}
-                    placeholder="e.g. Build"
-                    className="h-9 bg-background font-medium"
-                  />
-                </div>
-                <div className="space-y-1 sm:col-span-3">
-                  <Label htmlFor={`step-cmd-${index}`} className="text-[10px] uppercase">
-                    Command
-                  </Label>
-                  <Input
-                    id={`step-cmd-${index}`}
-                    value={step.cmd}
-                    onChange={(event) => updateStep(index, { cmd: event.target.value })}
-                    placeholder="e.g. bun run build"
-                    className="h-9 bg-background font-mono text-xs"
-                  />
-                </div>
+                <StepField
+                  id={`step-name-${index}`}
+                  label="Name"
+                  value={step.name}
+                  onChange={(value) => updateStep(index, { name: value })}
+                  placeholder="e.g. Build"
+                  inputClassName="font-medium"
+                />
+                <StepField
+                  id={`step-cmd-${index}`}
+                  label="Command"
+                  value={step.cmd}
+                  onChange={(value) => updateStep(index, { cmd: value })}
+                  placeholder="e.g. bun run build"
+                  wrapperClassName="sm:col-span-3"
+                  inputClassName="font-mono text-xs"
+                />
               </div>
               <Button
                 type="button"
@@ -121,6 +118,39 @@ export function PipelineEditor({
           Create project
         </Button>
       </div>
+    </div>
+  )
+}
+
+function StepField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  wrapperClassName,
+  inputClassName,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  wrapperClassName?: string
+  inputClassName?: string
+}) {
+  return (
+    <div className={cn("space-y-1", wrapperClassName)}>
+      <Label htmlFor={id} className="text-[10px] uppercase">
+        {label}
+      </Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={cn("h-9 bg-background", inputClassName)}
+      />
     </div>
   )
 }

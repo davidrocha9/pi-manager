@@ -1,7 +1,13 @@
 import { Cpu, HardDrive, MemoryStick, Thermometer } from "lucide-react"
 
 import type { PiHealth } from "@/lib/api"
-import { METRIC_IDS, METRICS, temperatureTone, type MetricId } from "@/lib/health"
+import {
+  METRIC_IDS,
+  METRICS,
+  temperatureTone,
+  type MetricId,
+  type TemperatureTone,
+} from "@/lib/health"
 import { cn } from "@/lib/utils"
 
 const METRIC_ICONS = {
@@ -11,29 +17,10 @@ const METRIC_ICONS = {
   disk: HardDrive,
 } as const
 
-const TONE_TEXT: Record<ReturnType<typeof temperatureTone>, string> = {
-  danger: "text-danger",
-  warning: "text-warning",
-  success: "text-success",
-}
-
-const TONE_BAR: Record<ReturnType<typeof temperatureTone>, string> = {
-  danger: "bg-danger",
-  warning: "bg-warning",
-  success: "bg-success",
-}
-
-function metricValue(health: PiHealth, metric: MetricId): number {
-  switch (metric) {
-    case "cpu":
-      return health.cpu_usage ?? 0
-    case "memory":
-      return health.memory_percent ?? 0
-    case "temperature":
-      return health.temperature ?? 0
-    case "disk":
-      return health.disk_percent ?? 0
-  }
+const TONE_CLASSES: Record<TemperatureTone, { text: string; bar: string }> = {
+  danger: { text: "text-danger", bar: "bg-danger" },
+  warning: { text: "text-warning", bar: "bg-warning" },
+  success: { text: "text-success", bar: "bg-success" },
 }
 
 type MetricCardsProps = {
@@ -52,10 +39,13 @@ export function MetricCards({ health, selected, onSelect }: MetricCardsProps) {
       {METRIC_IDS.map((id) => {
         const config = METRICS[id]
         const Icon = METRIC_ICONS[id]
-        const value = metricValue(health, id)
+        const value = health[config.key] ?? 0
         const tone = id === "temperature" ? temperatureTone(value) : null
-        const fillPercent =
-          id === "temperature" ? Math.min((value / config.max) * 100, 100) : Math.min(value, 100)
+        const toneClasses = tone ? TONE_CLASSES[tone] : null
+        const fillPercent = Math.min(
+          id === "temperature" ? (value / config.max) * 100 : value,
+          100,
+        )
         const isActive = id === selected
 
         return (
@@ -79,7 +69,7 @@ export function MetricCards({ health, selected, onSelect }: MetricCardsProps) {
             <span
               className={cn(
                 "text-2xl font-black tabular-nums",
-                tone ? TONE_TEXT[tone] : "text-foreground",
+                toneClasses ? toneClasses.text : "text-foreground",
               )}
             >
               {value.toFixed(1)}
@@ -90,10 +80,7 @@ export function MetricCards({ health, selected, onSelect }: MetricCardsProps) {
               role="presentation"
             >
               <span
-              className={cn(
-                "block h-full rounded-full transition-all",
-                tone ? TONE_BAR[tone] : null,
-              )}
+              className={cn("block h-full rounded-full transition-all", toneClasses?.bar)}
               style={{ backgroundColor: tone ? undefined : config.color, width: `${fillPercent}%` }}
             />
             </span>

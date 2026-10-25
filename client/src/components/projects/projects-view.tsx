@@ -22,6 +22,7 @@ import {
   useStopProject,
 } from "@/hooks/use-projects"
 import type { Project } from "@/lib/api"
+import { errorMessage } from "@/lib/utils"
 
 import { DeleteProjectDialog } from "./delete-project-dialog"
 import { LogDialog } from "./log-dialog"
@@ -32,10 +33,6 @@ type ProjectsViewProps = {
   searchQuery: string
   onClearSearch: () => void
   onCreateProject: () => void
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 export function filterProjects(projects: Project[], query: string): Project[] {

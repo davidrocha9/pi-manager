@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { useCreateProject } from "@/hooks/use-projects"
 import type { PipelineStep } from "@/lib/api"
-import { cn, mobileSheetClassName } from "@/lib/utils"
+import { cn, errorMessage, mobileSheetClassName } from "@/lib/utils"
 
 import { DEFAULT_PIPELINE, PipelineEditor } from "./pipeline-editor"
 import { parsePorts, ProjectForm, type ProjectDetails } from "./project-form"
@@ -23,51 +23,42 @@ type CreateProjectDialogProps = {
 
 type Step = "details" | "pipeline"
 
+const STEPS: { id: Step; label: string }[] = [
+  { id: "details", label: "Details" },
+  { id: "pipeline", label: "Pipeline" },
+]
+
+function StepIndicator({ step }: { step: Step }) {
+  return (
+    <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.1em] uppercase">
+      {STEPS.map(({ id, label }, index) => (
+        <span key={id} className="contents">
+          {index > 0 ? <span className="h-px flex-1 bg-border" aria-hidden="true" /> : null}
+          <span
+            aria-current={step === id ? "step" : undefined}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2 py-1",
+              step === id
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-border text-muted-foreground",
+            )}
+          >
+            <span className="grid size-4 place-items-center rounded-full bg-background/70 text-[9px]">
+              {index + 1}
+            </span>
+            {label}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 const EMPTY_DETAILS: ProjectDetails = {
   id: "",
   description: "",
   ports: "",
   path: "",
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function StepIndicator({ step }: { step: Step }) {
-  return (
-    <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.1em] uppercase">
-      <span
-        aria-current={step === "details" ? "step" : undefined}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-2 py-1",
-          step === "details"
-            ? "border-primary/30 bg-primary/10 text-primary"
-            : "border-border text-muted-foreground",
-        )}
-      >
-        <span className="grid size-4 place-items-center rounded-full bg-background/70 text-[9px]">
-          1
-        </span>
-        Details
-      </span>
-      <span className="h-px flex-1 bg-border" aria-hidden="true" />
-      <span
-        aria-current={step === "pipeline" ? "step" : undefined}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-2 py-1",
-          step === "pipeline"
-            ? "border-primary/30 bg-primary/10 text-primary"
-            : "border-border text-muted-foreground",
-        )}
-      >
-        <span className="grid size-4 place-items-center rounded-full bg-background/70 text-[9px]">
-          2
-        </span>
-        Pipeline
-      </span>
-    </div>
-  )
 }
 
 export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogProps) {

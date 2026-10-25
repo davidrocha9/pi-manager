@@ -1,5 +1,5 @@
 import { ArrowRight, FolderSearch } from "lucide-react"
-import type { FormEvent } from "react"
+import type { FormEvent, ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,8 +40,7 @@ export function ProjectForm({ value, busy, onChange, onBrowse, onNext }: Project
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="project-id">Project ID</Label>
+        <Field label="Project ID" htmlFor="project-id">
           <Input
             id="project-id"
             value={value.id}
@@ -51,10 +50,9 @@ export function ProjectForm({ value, busy, onChange, onBrowse, onNext }: Project
             aria-required="true"
             className="h-9"
           />
-        </div>
+        </Field>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="project-description">Description</Label>
+        <Field label="Description" htmlFor="project-description">
           <Input
             id="project-description"
             value={value.description}
@@ -63,10 +61,9 @@ export function ProjectForm({ value, busy, onChange, onBrowse, onNext }: Project
             autoComplete="off"
             className="h-9"
           />
-        </div>
+        </Field>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="project-ports">Ports</Label>
+        <Field label="Ports" htmlFor="project-ports">
           <Input
             id="project-ports"
             value={value.ports}
@@ -80,10 +77,9 @@ export function ProjectForm({ value, busy, onChange, onBrowse, onNext }: Project
           <p id="project-ports-hint" className="text-xs text-muted-foreground">
             Optional, comma separated. Leave empty when the project opens no ports.
           </p>
-        </div>
+        </Field>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="project-path">Path to app</Label>
+        <Field label="Path to app" htmlFor="project-path">
           <div className="flex gap-2">
             <Input
               id="project-path"
@@ -98,7 +94,7 @@ export function ProjectForm({ value, busy, onChange, onBrowse, onNext }: Project
               Browse
             </Button>
           </div>
-        </div>
+        </Field>
       </div>
 
       <div className="flex justify-end border-t border-border pt-4">
@@ -108,5 +104,22 @@ export function ProjectForm({ value, busy, onChange, onBrowse, onNext }: Project
         </Button>
       </div>
     </form>
+  )
+}
+
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string
+  htmlFor: string
+  children: ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+    </div>
   )
 }

@@ -35,19 +35,17 @@ function AppContent() {
         description="Manage and monitor your Pi projects and system health."
         healthError={healthError}
       />
-      {activeTab === "projects" ? (
-        <div className="mt-6">
+      <div className="mt-6">
+        {activeTab === "projects" ? (
           <ProjectsView
             searchQuery={searchQuery}
             onClearSearch={() => setSearchQuery("")}
             onCreateProject={() => setCreateOpen(true)}
           />
-        </div>
-      ) : (
-        <div className="mt-6">
+        ) : (
           <PiHealthView />
-        </div>
-      )}
+        )}
+      </div>
       <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </AppShell>
   )

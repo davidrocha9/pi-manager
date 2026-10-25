@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getFiles, type FsEntry } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, errorMessage } from "@/lib/utils"
 
 type FileBrowserProps = {
   initialPath?: string
@@ -59,7 +59,7 @@ export function FileBrowser({ initialPath = "", onSelect, onCancel }: FileBrowse
       setActiveIndex(0)
       return listing
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(errorMessage(cause))
       return null
     } finally {
       setLoading(false)
@@ -95,7 +95,7 @@ export function FileBrowser({ initialPath = "", onSelect, onCancel }: FileBrowse
         await loadPath(relative)
       } catch (cause) {
         if (cancelled) return
-        setError(cause instanceof Error ? cause.message : String(cause))
+        setError(errorMessage(cause))
         setLoading(false)
       }
     }

@@ -3,10 +3,20 @@ import { Clock, Gauge, Server } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { usePiHealth } from "@/hooks/use-pi-health"
-import type { PiHealth } from "@/lib/api"
-import { METRICS, TIMEFRAME_IDS, TIMEFRAMES, type MetricId, type TimeframeId } from "@/lib/health"
+import type { PiHealth, PiHistoryPoint } from "@/lib/api"
+import {
+  METRIC_IDS,
+  METRICS,
+  TIMEFRAME_IDS,
+  TIMEFRAMES,
+  type MetricId,
+  type TimeframeId,
+} from "@/lib/health"
+
+const EMPTY_HISTORY: PiHistoryPoint[] = []
 
 import { HealthChart } from "./health-chart"
 import { MetricCards } from "./metric-cards"
@@ -55,24 +65,24 @@ function LoadingSkeleton() {
   return (
     <div className="flex flex-col gap-4" aria-label="Loading Pi health">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {(["hostname", "uptime", "load"] as const).map((key) => (
-          <div key={key} className="animate-pulse rounded-xl border border-border p-4">
-            <div className="mb-2 h-4 w-20 rounded bg-muted" />
-            <div className="h-6 w-24 rounded bg-muted" />
+        {["hostname", "uptime", "load"].map((key) => (
+          <div key={key} className="rounded-xl border border-border p-4">
+            <Skeleton className="mb-2 h-4 w-20" />
+            <Skeleton className="h-6 w-24" />
           </div>
         ))}
       </div>
       <div className="flex flex-col gap-4 lg:flex-row">
         <div className="grid grid-cols-2 gap-3 lg:flex lg:w-56 lg:flex-col">
-          {(["cpu", "memory", "temperature", "disk"] as const).map((key) => (
-            <div key={key} className="min-h-[110px] flex-1 animate-pulse rounded-xl border border-border p-4">
-              <div className="mb-2 h-4 w-16 rounded bg-muted" />
-              <div className="h-6 w-20 rounded bg-muted" />
+          {METRIC_IDS.map((key) => (
+            <div key={key} className="min-h-[110px] flex-1 rounded-xl border border-border p-4">
+              <Skeleton className="mb-2 h-4 w-16" />
+              <Skeleton className="h-6 w-20" />
             </div>
           ))}
         </div>
-        <div className="flex-1 animate-pulse rounded-xl border border-border p-4">
-          <div className="h-full min-h-40 rounded bg-muted" />
+        <div className="flex-1 rounded-xl border border-border p-4">
+          <Skeleton className="h-full min-h-40" />
         </div>
       </div>
     </div>
@@ -136,7 +146,7 @@ export function PiHealthView() {
                 <TabsList className="max-w-full overflow-x-auto">
                   {TIMEFRAME_IDS.map((id) => (
                     <TabsTrigger key={id} value={id} className="min-h-11 sm:min-h-0">
-                      {TIMEFRAMES[id].split(" ")[1] ?? TIMEFRAMES[id]}
+                      {TIMEFRAMES[id].shortLabel}
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -144,7 +154,7 @@ export function PiHealthView() {
             </div>
 
             <div className="min-h-0 flex-1 rounded-lg border border-border/50 bg-muted/30 p-2 sm:p-4">
-              <HealthChart history={health.history ?? []} metric={metric} timeframe={timeframe} />
+              <HealthChart history={health.history ?? EMPTY_HISTORY} metric={metric} timeframe={timeframe} />
             </div>
           </CardContent>
         </Card>

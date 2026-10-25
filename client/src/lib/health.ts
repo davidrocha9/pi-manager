@@ -51,18 +51,18 @@ export const METRICS: Record<MetricId, MetricConfig> = {
 
 export const METRIC_IDS = Object.keys(METRICS) as MetricId[]
 
-const TIMEFRAME_DURATIONS: Record<TimeframeId, number> = {
-  hour: 60 * 60 * 1000,
-  day: 24 * 60 * 60 * 1000,
-  month: 30 * 24 * 60 * 60 * 1000,
-  all: Number.POSITIVE_INFINITY,
+export type TimeframeConfig = {
+  label: string
+  shortLabel: string
+  /** Window in milliseconds; `all` is unbounded. */
+  durationMs: number
 }
 
-export const TIMEFRAMES: Record<TimeframeId, string> = {
-  hour: "Last Hour",
-  day: "Last Day",
-  month: "Last Month",
-  all: "All Time",
+export const TIMEFRAMES: Record<TimeframeId, TimeframeConfig> = {
+  hour: { label: "Last Hour", shortLabel: "Hour", durationMs: 60 * 60 * 1000 },
+  day: { label: "Last Day", shortLabel: "Day", durationMs: 24 * 60 * 60 * 1000 },
+  month: { label: "Last Month", shortLabel: "Month", durationMs: 30 * 24 * 60 * 60 * 1000 },
+  all: { label: "All Time", shortLabel: "All", durationMs: Number.POSITIVE_INFINITY },
 }
 
 export const TIMEFRAME_IDS = Object.keys(TIMEFRAMES) as TimeframeId[]
@@ -78,8 +78,8 @@ export function filterByTimeframe(
   timeframe: TimeframeId,
   now: number,
 ): PiHistoryPoint[] {
-  const duration = TIMEFRAME_DURATIONS[timeframe]
-  const startTime = duration === Number.POSITIVE_INFINITY ? 0 : now - duration
+  if (timeframe === "all") return history.slice()
+  const startTime = now - TIMEFRAMES[timeframe].durationMs
 
   return history.filter((point) => new Date(point.time).getTime() >= startTime)
 }
@@ -103,7 +103,26 @@ const DOWNSAMPLE_TARGET = 300
 export function downsample<T>(series: T[], target: number = DOWNSAMPLE_TARGET): T[] {
   if (series.length <= target) return series
   const step = Math.floor(series.length / target)
+  if (step <= 1) return series
   return series.filter((_, index) => index % step === 0)
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Label keys per timeframe. A point earns a label when its key differs from
+ * the previous labeled point's key; distinct prefixes keep the per-timeframe
+ * rules from colliding.
+ */
+const LABEL_RULES: Record<TimeframeId, (date: Date) => string | null> = {
+  hour: (date) => (date.getMinutes() % 5 === 0 ? `m:${date.getMinutes()}` : null),
+  day: (date) => (date.getMinutes() === 0 ? `h:${date.getHours()}` : null),
+  month: (date) =>
+    date.getHours() === 0 && date.getMinutes() === 0 ? `d:${date.getDate()}` : null,
+  all: (date) =>
+    date.getDay() === 1 && date.getHours() === 0 && date.getMinutes() === 0
+      ? `w:${Math.floor(date.getTime() / WEEK_MS)}`
+      : null,
 }
 
 /**
@@ -114,45 +133,16 @@ export function downsample<T>(series: T[], target: number = DOWNSAMPLE_TARGET): 
  */
 export function labelIndices(series: ChartPoint[], timeframe: TimeframeId): number[] {
   if (series.length < 2) return []
+  const rule = LABEL_RULES[timeframe]
   const labels: number[] = []
-
-  let lastMinute = -1
-  let lastHour = -1
-  let lastDay = -1
-  let lastWeek = -1
+  let lastKey: string | null = null
 
   series.forEach((point, index) => {
-    const date = point.time
-    const minute = date.getMinutes()
-    const hour = date.getHours()
-    const day = date.getDate()
-    const dayOfWeek = date.getDay()
-
-    let push = false
-    if (timeframe === "hour") {
-      if (minute % 5 === 0 && minute !== lastMinute) {
-        push = true
-        lastMinute = minute
-      }
-    } else if (timeframe === "day") {
-      if (minute === 0 && hour !== lastHour) {
-        push = true
-        lastHour = hour
-      }
-    } else if (timeframe === "month") {
-      if (hour === 0 && minute === 0 && day !== lastDay) {
-        push = true
-        lastDay = day
-      }
-    } else {
-      const week = Math.floor(date.getTime() / (7 * 24 * 60 * 60 * 1000))
-      if (dayOfWeek === 1 && hour === 0 && minute === 0 && week !== lastWeek) {
-        push = true
-        lastWeek = week
-      }
+    const key = rule(point.time)
+    if (key !== null && key !== lastKey) {
+      lastKey = key
+      labels.push(index)
     }
-
-    if (push) labels.push(index)
   })
 
   if (labels.length < 2) return [0, series.length - 1]

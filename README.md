@@ -9,6 +9,7 @@
 - **Pipeline Execution**: Visual tracking of project states (`IDLE`, `BOOTING`, `ACTIVE`, `FAILED`) with real-time logs.
 - **Systemd Integration**: Designed to work seamlessly with systemd for process supervision.
 - **Modern UI**: Built with React, TypeScript, TailwindCSS, and shadcn/ui for a responsive and beautiful experience.
+- **Installable (PWA)**: Add it to your phone's home screen from Safari or Chrome for a fullscreen, offline-capable app.
 
 ## 📂 Project Structure
 

@@ -27,3 +27,10 @@ vendor/
 server/state.json
 server/state-history.json
 server/internal/api/web/assets/
+# Generated PWA worker (built by `bun run build`, like assets/)
+server/internal/api/web/sw.js
+server/internal/api/web/workbox-*.js
+server/internal/api/web/manifest.webmanifest
+server/internal/api/web/registerSW.js
+server/internal/api/web/icons/
+server/internal/api/web/apple-touch-icon.png

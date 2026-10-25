@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,6 +29,12 @@ func main() {
 	}
 	flag.StringVar(&fsBase, "fs-base", home, "base path the file-browser API is allowed to access (default: home directory)")
 	flag.Parse()
+
+	// Serve the PWA manifest with its official content type. Go's mime table
+	// doesn't map .webmanifest, and browsers ignore manifests served as text.
+	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
+		log.Printf("warning: could not register webmanifest mime type: %v", err)
+	}
 
 	log.Println("pi-manager starting")
 	startTime := time.Now()
